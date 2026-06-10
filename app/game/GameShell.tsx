@@ -1,0 +1,500 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import type { Engine, EngineCallbacks, GameState, HudState } from "./engine/Engine";
+
+const GameCanvas = dynamic(() => import("./GameCanvas"), { ssr: false });
+
+const INITIAL_HUD: HudState = {
+  pages: 0,
+  totalPages: 8,
+  stamina: 1,
+  prompt: null,
+  objective: "COLLECT THE PAGES — 0/8",
+  flashlight: true,
+  sneaking: false,
+  cheats: null,
+};
+
+export default function GameShell() {
+  const engineRef = useRef<Engine | null>(null);
+  const autoStartRef = useRef(false);
+  const [runId, setRunId] = useState(0);
+  const [state, setState] = useState<GameState>("idle");
+  const [booted, setBooted] = useState(false);
+  const [hud, setHud] = useState<HudState>(INITIAL_HUD);
+  const [pageLines, setPageLines] = useState<string[] | null>(null);
+  const [stats, setStats] = useState({ pages: 0, seconds: 0 });
+  const [toast, setToast] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
+  const isTouch = useMediaQuery("(pointer: coarse)");
+  const portrait = useMediaQuery("(orientation: portrait)");
+
+  const callbacksRef = useRef<EngineCallbacks>({
+    onState: (s) => {
+      setState(s);
+      if (s !== "paused") setResuming(false); // clears "RESUMING…" feedback
+    },
+    onHud: (h) => setHud(h),
+    onPageText: (lines) => setPageLines(lines),
+    onStats: (s) => setStats(s),
+    onToast: (m) => setToast(m),
+  });
+
+  const handleReady = useCallback((engine: Engine) => {
+    engineRef.current = engine;
+    setBooted(true);
+    if (autoStartRef.current) {
+      autoStartRef.current = false;
+      engine.start();
+    }
+  }, []);
+
+  // Page text fades out on its own.
+  useEffect(() => {
+    if (!pageLines) return;
+    const id = setTimeout(() => setPageLines(null), 6500);
+    return () => clearTimeout(id);
+  }, [pageLines]);
+
+  // Toasts fade out on their own.
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  // Rotating to portrait mid-run pauses the game (phones play landscape).
+  useEffect(() => {
+    if (isTouch && portrait) engineRef.current?.pause();
+  }, [isTouch, portrait]);
+
+  const begin = () => engineRef.current?.start();
+  const resume = () => {
+    setResuming(true);
+    engineRef.current?.resume();
+  };
+  const retry = () => {
+    autoStartRef.current = true;
+    setBooted(false);
+    setState("idle");
+    setHud(INITIAL_HUD);
+    setPageLines(null);
+    engineRef.current = null;
+    setRunId((r) => r + 1);
+  };
+
+  const mmss = useMemo(() => {
+    const m = Math.floor(stats.seconds / 60);
+    const s = stats.seconds % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }, [stats.seconds]);
+
+  return (
+    <div className="fixed inset-0 select-none overflow-hidden bg-black">
+      <GameCanvas key={runId} callbacksRef={callbacksRef} onReady={handleReady} />
+
+      {/* dev/cheat toast — sits above everything */}
+      {toast && (
+        <div className="font-elite pointer-events-none absolute left-1/2 top-[8%] z-20 -translate-x-1/2 border border-emerald-200/20 bg-black/80 px-5 py-2 text-[12px] tracking-[0.25em] text-emerald-100/90 shadow-[0_0_30px_rgba(0,0,0,0.8)]">
+          {toast}
+        </div>
+      )}
+
+      {/* phones must play in landscape */}
+      {isTouch && portrait && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6 bg-[#0a0905]/97">
+          <div className="phone-spin h-16 w-10 rounded-md border-2 border-amber-100/60" />
+
+          <div className="font-elite text-lg tracking-[0.35em] text-amber-100/80">
+            ROTATE YOUR DEVICE
+          </div>
+          <p className="font-elite max-w-xs text-center text-xs leading-5 tracking-[0.15em] text-amber-100/40">
+            the backrooms only exist in landscape
+          </p>
+        </div>
+      )}
+
+      {/* touch controls */}
+      {isTouch && !portrait && state === "playing" && (
+        <TouchControls
+          engineRef={engineRef}
+          prompt={hud.prompt}
+          flashlight={hud.flashlight}
+          sneaking={hud.sneaking}
+        />
+      )}
+
+      {/* ------------------------------ HUD ------------------------------ */}
+      {(state === "playing" || state === "dying") && (
+        <div className="pointer-events-none absolute inset-0 cursor-none">
+          {/* crosshair */}
+          <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-100/40" />
+
+          {/* objective */}
+          <div className="font-elite absolute left-5 top-4 text-[13px] tracking-[0.25em] text-amber-100/50">
+            {hud.objective}
+          </div>
+
+          {/* active cheats — always visible while any cheat is on */}
+          {hud.cheats && (
+            <div className="font-elite absolute left-5 top-10 text-[11px] tracking-[0.25em] text-emerald-300/80 [text-shadow:0_0_10px_rgba(60,255,160,0.35)]">
+              CHEATS: {hud.cheats}
+            </div>
+          )}
+
+          {/* sneaking indicator */}
+          {hud.sneaking && (
+            <div className="font-elite absolute bottom-14 left-1/2 -translate-x-1/2 text-[11px] tracking-[0.4em] text-amber-100/45">
+              — SNEAKING —
+            </div>
+          )}
+
+          {/* pages */}
+          <div className="font-elite absolute bottom-4 left-5 text-sm tracking-[0.3em] text-amber-100/60">
+            PAGES {hud.pages}/{hud.totalPages}
+          </div>
+
+          {/* key hints (desktop only) */}
+          {!isTouch && (
+            <div className="font-elite absolute bottom-4 right-5 text-[11px] tracking-[0.25em] text-amber-100/35">
+              [F] TORCH {hud.flashlight ? "ON" : "OFF"} · [SHIFT] RUN · [CTRL] SNEAK{" "}
+              {hud.sneaking ? "ON" : "OFF"}
+            </div>
+          )}
+
+          {/* stamina */}
+          {hud.stamina < 0.995 && (
+            <div className="absolute bottom-9 left-1/2 h-[3px] w-44 -translate-x-1/2 overflow-hidden rounded bg-white/10">
+              <div
+                className={`h-full transition-[width] duration-150 ${
+                  hud.stamina < 0.25 ? "bg-red-400/80" : "bg-amber-100/70"
+                }`}
+                style={{ width: `${hud.stamina * 100}%` }}
+              />
+            </div>
+          )}
+
+          {/* interaction prompt */}
+          {hud.prompt && (
+            <div className="font-elite absolute bottom-[18%] left-1/2 -translate-x-1/2 animate-pulse text-base tracking-[0.3em] text-amber-100/90 [text-shadow:0_0_12px_rgba(255,220,150,0.5)]">
+              {hud.prompt}
+            </div>
+          )}
+
+          {/* collected page readout */}
+          {pageLines && (
+            <div className="page-pop absolute left-1/2 top-[16%] -translate-x-1/2">
+              <div className="font-elite max-w-sm -rotate-1 border border-amber-100/10 bg-[#171410]/90 px-7 py-5 text-center text-[15px] leading-7 text-amber-100/85 shadow-[0_0_60px_rgba(0,0,0,0.9)]">
+                {pageLines.map((l, i) => (
+                  <div key={i}>{l}</div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* --------------------------- START MENU --------------------------- */}
+      {state === "idle" && (
+        <Overlay>
+          <div className="flicker-slow font-elite text-[11px] tracking-[0.6em] text-amber-200/40">
+            LEVEL 0
+          </div>
+          <h1 className="font-elite flicker mt-3 text-6xl tracking-[0.18em] text-amber-100/90 [text-shadow:0_0_30px_rgba(255,220,140,0.25)] sm:text-7xl">
+            BACKROOMS
+          </h1>
+          <p className="font-elite mt-6 max-w-md text-center text-sm leading-6 text-amber-100/45">
+            you noclipped out of reality. mono-yellow halls, damp carpet, the
+            buzz of fluorescent light — and something that walks when the
+            lights die. find all 8 pages. find the door. get out.
+          </p>
+
+          {isTouch ? (
+            <div className="font-elite mt-8 grid grid-cols-2 gap-x-10 gap-y-1.5 text-[12px] tracking-[0.2em] text-amber-100/35">
+              <span>LEFT STICK — WALK</span>
+              <span>RIGHT SIDE — LOOK</span>
+              <span>STICK FULLY OUT — RUN</span>
+              <span>BUTTONS — TORCH / SNEAK</span>
+            </div>
+          ) : (
+            <div className="font-elite mt-8 grid grid-cols-2 gap-x-10 gap-y-1.5 text-[12px] tracking-[0.2em] text-amber-100/35">
+              <span>WASD — WALK</span>
+              <span>MOUSE — LOOK</span>
+              <span>SHIFT — RUN</span>
+              <span>CTRL — SNEAK</span>
+              <span>F — FLASHLIGHT</span>
+              <span>E — INTERACT</span>
+              <span>ESC — PAUSE</span>
+            </div>
+          )}
+
+          <button
+            onClick={begin}
+            disabled={!booted}
+            className="font-elite group mt-10 border border-amber-100/30 px-12 py-3 text-lg tracking-[0.5em] text-amber-100/80 transition-all hover:border-amber-100/80 hover:bg-amber-100/5 hover:text-amber-100 hover:[text-shadow:0_0_20px_rgba(255,220,140,0.6)] disabled:opacity-40"
+          >
+            {booted ? "ENTER" : "GENERATING…"}
+          </button>
+
+          <p className="font-elite mt-6 text-[11px] tracking-[0.3em] text-amber-100/25">
+            HEADPHONES STRONGLY RECOMMENDED
+          </p>
+        </Overlay>
+      )}
+
+      {/* ----------------------------- PAUSED ----------------------------- */}
+      {state === "paused" && (
+        <Overlay>
+          <h2 className="font-elite text-4xl tracking-[0.3em] text-amber-100/80">
+            PAUSED
+          </h2>
+          <p className="font-elite mt-4 text-sm tracking-[0.2em] text-amber-100/40">
+            it is still in there. it does not pause.
+          </p>
+          <ArmedButton
+            onClick={resume}
+            disabled={resuming}
+            className="font-elite mt-8 border border-amber-100/30 px-10 py-3 tracking-[0.4em] text-amber-100/80 transition-all hover:border-amber-100/80 hover:bg-amber-100/5 disabled:opacity-50"
+          >
+            {resuming ? "RESUMING…" : "RESUME"}
+          </ArmedButton>
+        </Overlay>
+      )}
+
+      {/* ------------------------------ DEAD ------------------------------ */}
+      {state === "dead" && (
+        <Overlay tint="red">
+          <h2 className="font-elite glitch-text text-5xl tracking-[0.25em] text-red-300/90 [text-shadow:0_0_40px_rgba(255,40,40,0.4)]">
+            YOU WERE TAKEN
+          </h2>
+          <p className="font-elite mt-6 text-sm tracking-[0.25em] text-red-200/40">
+            PAGES FOUND — {stats.pages}/8 · SURVIVED — {mmss}
+          </p>
+          <p className="font-elite mt-2 text-xs tracking-[0.2em] text-red-200/30">
+            the backrooms keep what they catch.
+          </p>
+          <ArmedButton
+            onClick={retry}
+            className="font-elite mt-10 border border-red-300/30 px-10 py-3 tracking-[0.4em] text-red-200/80 transition-all hover:border-red-300/80 hover:bg-red-300/5 disabled:opacity-40"
+          >
+            WAKE UP AGAIN
+          </ArmedButton>
+        </Overlay>
+      )}
+
+      {/* ------------------------------ WON ------------------------------ */}
+      {state === "won" && (
+        <Overlay tint="light">
+          <h2 className="font-elite text-5xl tracking-[0.25em] text-amber-50 [text-shadow:0_0_50px_rgba(255,255,220,0.8)]">
+            YOU GOT OUT
+          </h2>
+          <p className="font-elite mt-6 text-sm tracking-[0.25em] text-amber-100/60">
+            ALL 8 PAGES · ESCAPED IN {mmss}
+          </p>
+          <p className="font-elite mt-2 text-xs tracking-[0.2em] text-amber-100/40">
+            …or did you just noclip into level 1?
+          </p>
+          <ArmedButton
+            onClick={retry}
+            className="font-elite mt-10 border border-amber-100/40 px-10 py-3 tracking-[0.4em] text-amber-100/90 transition-all hover:border-amber-100/90 hover:bg-amber-100/10 disabled:opacity-40"
+          >
+            GO BACK IN
+          </ArmedButton>
+        </Overlay>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A button that ignores input for its first 450ms on screen — soaks up the
+ * second half of an accidental double-click (which used to instantly retry
+ * or quit a run the moment an overlay appeared).
+ */
+function ArmedButton({
+  children,
+  onClick,
+  className,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  className?: string;
+  disabled?: boolean;
+}) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setArmed(true), 450);
+    return () => clearTimeout(id);
+  }, []);
+  return (
+    <button onClick={onClick} disabled={!armed || disabled} className={className}>
+      {children}
+    </button>
+  );
+}
+
+/* ------------------------------ touch UI ------------------------------ */
+
+function TouchControls({
+  engineRef,
+  prompt,
+  flashlight,
+  sneaking,
+}: {
+  engineRef: React.RefObject<Engine | null>;
+  prompt: string | null;
+  flashlight: boolean;
+  sneaking: boolean;
+}) {
+  const baseRef = useRef<HTMLDivElement>(null);
+  const knobRef = useRef<HTMLDivElement>(null);
+  const stickActive = useRef(false);
+  const lookLast = useRef<{ id: number; x: number; y: number } | null>(null);
+
+  const moveKnob = (e: React.PointerEvent) => {
+    const base = baseRef.current, knob = knobRef.current;
+    if (!base || !knob) return;
+    const r = base.getBoundingClientRect();
+    let dx = e.clientX - (r.left + r.width / 2);
+    let dy = e.clientY - (r.top + r.height / 2);
+    const R = r.width / 2 - 18;
+    const m = Math.hypot(dx, dy);
+    if (m > R) {
+      dx = (dx / m) * R;
+      dy = (dy / m) * R;
+    }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    engineRef.current?.setTouchMove(dx / R, dy / R);
+  };
+  const releaseKnob = () => {
+    stickActive.current = false;
+    if (knobRef.current) knobRef.current.style.transform = "translate(0px, 0px)";
+    engineRef.current?.setTouchMove(0, 0);
+  };
+
+  return (
+    <div className="absolute inset-0 z-10 select-none" style={{ touchAction: "none" }}>
+      {/* look pad — right two thirds of the screen */}
+      <div
+        className="absolute bottom-0 right-0 top-0 w-[62%]"
+        onPointerDown={(e) => {
+          lookLast.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const last = lookLast.current;
+          if (!last || last.id !== e.pointerId) return;
+          engineRef.current?.touchLook((e.clientX - last.x) * 2.4, (e.clientY - last.y) * 2.4);
+          lookLast.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+        }}
+        onPointerUp={() => (lookLast.current = null)}
+        onPointerCancel={() => (lookLast.current = null)}
+      />
+
+      {/* movement stick */}
+      <div
+        ref={baseRef}
+        className="absolute bottom-8 left-8 h-36 w-36 rounded-full border border-amber-100/25 bg-black/25"
+        onPointerDown={(e) => {
+          stickActive.current = true;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          moveKnob(e);
+        }}
+        onPointerMove={(e) => stickActive.current && moveKnob(e)}
+        onPointerUp={releaseKnob}
+        onPointerCancel={releaseKnob}
+      >
+        <div
+          ref={knobRef}
+          className="pointer-events-none absolute left-1/2 top-1/2 -ml-7 -mt-7 h-14 w-14 rounded-full border border-amber-100/40 bg-amber-100/20"
+        />
+      </div>
+
+      {/* action buttons */}
+      <div className="absolute bottom-10 right-5 flex flex-col items-end gap-3">
+        {prompt && (
+          <button
+            className="font-elite animate-pulse rounded border border-amber-100/60 bg-amber-100/15 px-6 py-3.5 text-sm tracking-[0.25em] text-amber-100"
+            onPointerDown={() => engineRef.current?.touchInteract()}
+          >
+            {prompt.replace("[E] ", "")}
+          </button>
+        )}
+        <div className="flex gap-3">
+          <button
+            className={`font-elite rounded border px-4 py-3 text-[11px] tracking-[0.2em] ${
+              sneaking
+                ? "border-amber-100/70 bg-amber-100/25 text-amber-100"
+                : "border-amber-100/30 bg-black/30 text-amber-100/70"
+            }`}
+            onPointerDown={() => engineRef.current?.setSneak(!sneaking)}
+          >
+            SNEAK
+          </button>
+          <button
+            className={`font-elite rounded border px-4 py-3 text-[11px] tracking-[0.2em] ${
+              flashlight
+                ? "border-amber-100/50 bg-amber-100/15 text-amber-100/90"
+                : "border-amber-100/30 bg-black/30 text-amber-100/60"
+            }`}
+            onPointerDown={() => engineRef.current?.touchTorch()}
+          >
+            TORCH
+          </button>
+        </div>
+      </div>
+
+      {/* pause */}
+      <button
+        className="font-elite absolute right-4 top-4 rounded border border-amber-100/30 bg-black/30 px-3.5 py-2 text-[11px] tracking-[0.2em] text-amber-100/70"
+        onPointerDown={() => engineRef.current?.pause()}
+      >
+        ❚❚
+      </button>
+    </div>
+  );
+}
+
+function useMediaQuery(query: string) {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(query);
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(query).matches,
+    () => false, // SSR: assume desktop, corrected on hydration
+  );
+}
+
+function Overlay({
+  children,
+  tint = "dark",
+}: {
+  children: React.ReactNode;
+  tint?: "dark" | "red" | "light";
+}) {
+  const bg =
+    tint === "red"
+      ? "bg-[#180404]/90"
+      : tint === "light"
+        ? "bg-[#15130c]/85"
+        : "bg-[#0a0905]/92";
+  return (
+    <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center ${bg}`}>
+      <div className="crt-grain pointer-events-none absolute inset-0 opacity-[0.07]" />
+      <div className="scanlines pointer-events-none absolute inset-0 opacity-[0.05]" />
+      <div className="relative flex flex-col items-center px-6">{children}</div>
+    </div>
+  );
+}

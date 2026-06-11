@@ -15,6 +15,8 @@ const SIZES = [
   { name: "cover-1920x1080", w: 1920, h: 1080, level: 30, title: 148, tag: 32, padTitle: 150, padTag: 74, padLevel: 286 },
   { name: "cover-800x1200", w: 800, h: 1200, level: 22, title: 84, tag: 20, padTitle: 130, padTag: 70, padLevel: 210 },
   { name: "cover-800x800", w: 800, h: 800, level: 20, title: 76, tag: 18, padTitle: 110, padTag: 56, padLevel: 182 },
+  // itch.io recommended cover size
+  { name: "cover-630x500", w: 630, h: 500, level: 16, title: 60, tag: 15, padTitle: 86, padTag: 44, padLevel: 142 },
 ];
 
 const browser = await puppeteer.launch({

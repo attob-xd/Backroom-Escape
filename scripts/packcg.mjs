@@ -7,7 +7,8 @@
  */
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, readdirSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+import AdmZip from "adm-zip";
 
 console.log("[packcg] building static export…");
 execSync("pnpm build", { stdio: "inherit", env: { ...process.env, CG_EXPORT: "1" } });
@@ -49,11 +50,15 @@ for (const file of walk("out")) {
 }
 console.log(`[packcg] rewrote root-absolute URLs in ${fixed} file(s)`);
 
+// NOT Compress-Archive: Windows PowerShell 5.1 writes backslash entry names
+// into zips (spec violation). Some portals' extractors (itch.io) then fail to
+// create the directories, 404ing every asset. adm-zip writes proper "/".
 const zip = "backrooms-crazygames.zip";
 rmSync(zip, { force: true });
-execSync(
-  `powershell -NoProfile -Command "Compress-Archive -Path out/* -DestinationPath ${zip} -Force"`,
-  { stdio: "inherit" },
-);
+const archive = new AdmZip();
+for (const file of walk("out")) {
+  archive.addFile(relative("out", file).replaceAll("\\", "/"), readFileSync(file));
+}
+archive.writeZip(zip);
 const mb = (statSync(zip).size / 1024 / 1024).toFixed(2);
 console.log(`[packcg] done -> ${zip} (${mb} MB)`);

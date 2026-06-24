@@ -1,736 +1,931 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Backrooms: Level 0 - Multiplayer</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-    #game-container { position: fixed; inset: 0; }
-    canvas { display: block; width: 100%; height: 100%; }
-    
-    /* UI Overlays */
-    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10,9,5,0.92); z-index: 10; }
-    .hidden { display: none !important; }
-    
-    /* Lobby System */
-    #lobby-screen { background: #0a0905; }
-    .lobby-panel { background: #171410; border: 1px solid #ffae4433; padding: 2rem; border-radius: 4px; max-width: 500px; width: 90%; }
-    .lobby-title { color: #ffe6aa; font-size: 1.5rem; letter-spacing: 0.3em; margin-bottom: 1.5rem; text-align: center; }
-    .input-group { margin-bottom: 1rem; }
-    .input-group label { display: block; color: #ffae4488; font-size: 0.75rem; letter-spacing: 0.2em; margin-bottom: 0.5rem; }
-    .input-group input { width: 100%; padding: 0.75rem; background: #0a0905; border: 1px solid #ffae4444; color: #ffe6aa; font-family: inherit; font-size: 0.9rem; }
-    .input-group input:focus { outline: none; border-color: #ffae44; }
-    .btn { background: #ffae44cc; color: #000; border: none; padding: 0.75rem 2rem; font-family: inherit; font-size: 0.9rem; letter-spacing: 0.2em; cursor: pointer; transition: all 0.2s; }
-    .btn:hover { background: #ffe6aa; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-secondary { background: transparent; border: 1px solid #ffae4444; color: #ffae4488; }
-    .btn-secondary:hover { border-color: #ffae44; color: #ffae44; }
-    
-    .player-list { margin: 1.5rem 0; max-height: 200px; overflow-y: auto; }
-    .player-item { display: flex; justify-content: space-between; padding: 0.5rem; border-bottom: 1px solid #ffae4422; color: #ffae4488; font-size: 0.8rem; }
-    .player-item.host { color: #ffae44; }
-    .player-item.you { color: #fff; }
-    
-    .status-msg { color: #ff6b6b; font-size: 0.8rem; margin-top: 1rem; text-align: center; }
-    .connection-status { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; font-size: 0.75rem; color: #ffae4488; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ff6b6b; }
-    .status-dot.connected { background: #51cf66; }
-    .status-dot.connecting { background: #fcc419; animation: pulse 1s infinite; }
-    
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    
-    /* In-game HUD */
-    #hud { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
-    .hud-element { position: absolute; color: #ffe6aa99; font-size: 0.8rem; letter-spacing: 0.2em; }
-    .objective { left: 20px; top: 20px; color: #ffe6aaff; text-shadow: 0 0 14px rgba(255,225,150,0.5); }
-    .pages { bottom: 20px; left: 20px; }
-    .stamina-bar { position: absolute; bottom: 36px; left: 50%; transform: translateX(-50%); width: 176px; height: 3px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
-    .stamina-fill { height: 100%; background: #ffe6aabb; transition: width 0.15s; }
-    .stamina-fill.low { background: #ff6b6bcc; }
-    .crosshair { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; background: #ffe6aa66; border-radius: 50%; transform: translate(-50%, -50%); }
-    .prompt { position: absolute; bottom: 28%; left: 50%; transform: translateX(-50%); color: #ffe6aaee; font-size: 1rem; animation: pulse-text 1s infinite; }
-    @keyframes pulse-text { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    
-    /* Multiplayer indicators */
-    .player-marker { position: absolute; width: 20px; height: 20px; border: 2px solid #4dabf7; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
-    .player-marker::after { content: attr(data-name); position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-size: 0.6rem; white-space: nowrap; color: #4dabf7; }
-    
-    /* Chat */
-    #chat-container { position: absolute; bottom: 80px; left: 20px; width: 300px; z-index: 6; }
-    #chat-messages { max-height: 150px; overflow-y: auto; margin-bottom: 0.5rem; font-size: 0.75rem; }
-    .chat-msg { margin-bottom: 0.25rem; color: #ffae4488; }
-    .chat-msg .name { color: #4dabf7; }
-    #chat-input { width: 100%; padding: 0.5rem; background: rgba(10,9,5,0.8); border: 1px solid #ffae4444; color: #ffe6aa; font-family: inherit; font-size: 0.8rem; }
-    
-    /* Toast notifications */
-    .toast { position: absolute; left: 50%; top: 8%; transform: translateX(-50%); background: rgba(0,0,0,0.8); border: 1px solid #33cc6633; padding: 0.5rem 1.25rem; font-size: 0.75rem; letter-spacing: 0.2em; color: #33cc6699; z-index: 20; }
-    
-    /* Loading */
-    .loading { color: #ffae4488; font-size: 0.9rem; letter-spacing: 0.2em; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backrooms Level 0 - Multiplayer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #0a0905; font-family: 'Courier New', monospace; }
+        #game-container { position: relative; width: 100vw; height: 100vh; }
+        #game-canvas { display: block; width: 100%; height: 100%; }
+        
+        /* LOBBY SCREEN */
+        #lobby-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(180deg, #1a1610 0%, #0d0c08 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+        .lobby-box { background: rgba(26, 22, 16, 0.95); border: 1px solid #c9b896; padding: 40px; border-radius: 4px; max-width: 500px; width: 90%; text-align: center; }
+        .lobby-title { color: #e8dcc8; font-size: 14px; letter-spacing: 0.6em; margin-bottom: 10px; opacity: 0.6; }
+        .lobby-heading { color: #f5ebd8; font-size: 48px; letter-spacing: 0.2em; margin-bottom: 20px; text-shadow: 0 0 20px rgba(255, 230, 180, 0.3); }
+        .lobby-desc { color: #c9b896; font-size: 13px; line-height: 1.8; letter-spacing: 0.15em; margin-bottom: 30px; max-width: 400px; margin-left: auto; margin-right: auto; }
+        .input-group { margin-bottom: 20px; text-align: left; }
+        .input-group label { display: block; color: #d4c5a8; font-size: 11px; letter-spacing: 0.25em; margin-bottom: 8px; }
+        .input-group input { width: 100%; padding: 12px; background: #1a1610; border: 1px solid #5a4d3a; color: #e8dcc8; font-family: inherit; font-size: 14px; letter-spacing: 0.1em; }
+        .input-group input:focus { outline: none; border-color: #c9b896; }
+        .input-hint { color: #7a6d5a; font-size: 10px; letter-spacing: 0.15em; margin-top: 5px; }
+        .btn-primary { background: #d4c5a8; color: #1a1610; border: none; padding: 14px 40px; font-family: inherit; font-size: 13px; letter-spacing: 0.4em; cursor: pointer; transition: all 0.2s; }
+        .btn-primary:hover { background: #e8dcc8; box-shadow: 0 0 30px rgba(232, 220, 200, 0.2); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .status-area { margin-top: 25px; padding-top: 20px; border-top: 1px solid #3a3428; }
+        .status-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 10px; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff3a3a; }
+        .status-dot.connected { background: #3aff6a; }
+        .status-dot.connecting { background: #ffaa3a; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .status-text { color: #a89880; font-size: 11px; letter-spacing: 0.2em; }
+        .status-msg { color: #7a6d5a; font-size: 10px; letter-spacing: 0.15em; min-height: 15px; }
+        .player-list { margin-top: 20px; max-height: 150px; overflow-y: auto; border: 1px solid #3a3428; background: #12100c; }
+        .player-item { padding: 8px 12px; border-bottom: 1px solid #2a2418; display: flex; justify-content: space-between; align-items: center; font-size: 11px; letter-spacing: 0.15em; }
+        .player-item:last-child { border-bottom: none; }
+        .player-item.host .player-name { color: #5affaa; }
+        .player-item.you .player-name { color: #aaaaff; }
+        .player-name { color: #c9b896; }
+        .empty-list { color: #5a4d3a; font-size: 10px; letter-spacing: 0.2em; padding: 20px; text-align: center; }
+        .hidden { display: none !important; }
+        
+        /* HUD */
+        #hud { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .hud-objective { position: absolute; left: 20px; top: 20px; color: #f5ebd8; font-size: 14px; letter-spacing: 0.25em; text-shadow: 0 0 14px rgba(255, 225, 150, 0.5); }
+        .hud-pages { position: absolute; left: 20px; bottom: 20px; color: #c9b896; font-size: 14px; letter-spacing: 0.3em; }
+        .hud-stamina { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); width: 200px; height: 3px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
+        .stamina-bar { height: 100%; background: #d4c5a8; transition: width 0.15s; }
+        .stamina-bar.low { background: #ff6a6a; }
+        .hud-keys { position: absolute; right: 20px; bottom: 20px; color: #8a7d6a; font-size: 10px; letter-spacing: 0.25em; }
+        .crosshair { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; background: rgba(245, 235, 216, 0.4); border-radius: 50%; transform: translate(-50%, -50%); }
+        
+        /* PLAYER MARKERS */
+        #player-markers { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9; }
+        .player-marker { position: absolute; transform: translate(-50%, -50%); background: rgba(255, 87, 34, 0.9); color: white; padding: 4px 8px; border-radius: 3px; font-size: 10px; letter-spacing: 0.1em; white-space: nowrap; }
+        .player-marker::after { content: ' ▲'; font-size: 8px; }
+        
+        /* CHAT */
+        #chat-container { position: absolute; bottom: 20px; left: 20px; width: 350px; z-index: 11; pointer-events: auto; }
+        #chat-messages { height: 120px; overflow-y: auto; background: rgba(0,0,0,0.6); border: 1px solid #3a3428; padding: 8px; margin-bottom: 8px; font-size: 12px; }
+        .chat-msg { margin-bottom: 4px; }
+        .chat-name { color: #d4c5a8; font-weight: bold; }
+        .chat-text { color: #a89880; }
+        #chat-input { width: 100%; padding: 10px; background: #1a1610; border: 1px solid #5a4d3a; color: #e8dcc8; font-family: inherit; font-size: 12px; letter-spacing: 0.1em; }
+        #chat-input:disabled { background: #2a2418; color: #5a4d3a; }
+        
+        /* TOAST */
+        #toast-container { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); z-index: 20; }
+        .toast { background: rgba(0,0,0,0.85); color: #d4c5a8; padding: 12px 24px; border-radius: 4px; margin-bottom: 8px; font-size: 11px; letter-spacing: 0.25em; border: 1px solid #3a3428; animation: fadeOut 3s forwards; }
+        @keyframes fadeOut { 0% { opacity: 0; transform: translateY(-10px); } 10% { opacity: 1; transform: translateY(0); } 85% { opacity: 1; } 100% { opacity: 0; } }
+        
+        /* WIN SCREEN */
+        #win-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; }
+        .win-title { color: #5affaa; font-size: 36px; letter-spacing: 0.4em; margin-bottom: 20px; }
+        .win-stats { color: #c9b896; font-size: 16px; letter-spacing: 0.2em; margin-bottom: 30px; }
+        .win-restart { color: #d4c5a8; font-size: 12px; letter-spacing: 0.2em; opacity: 0.7; }
+        
+        /* PAGE POPUP */
+        .page-popup { position: absolute; left: 50%; top: 16%; transform: translateX(-50%); z-index: 15; }
+        .page-content { max-width: 500px; background: rgba(23, 20, 16, 0.95); border: 1px solid rgba(201, 184, 150, 0.1); padding: 30px 50px; text-align: center; font-size: 14px; line-height: 1.8; color: rgba(232, 220, 200, 0.85); box-shadow: 0 0 60px rgba(0,0,0,0.9); }
+        
+        /* OBJECTIVE BANNER */
+        .objective-banner { position: absolute; left: 50%; top: 28%; transform: translateX(-50%); border-top: 1px solid rgba(201, 184, 150, 0.15); border-bottom: 1px solid rgba(201, 184, 150, 0.15); background: rgba(0,0,0,0.45); padding: 20px 60px; text-align: center; backdrop-filter: blur(2px); z-index: 12; }
+        .obj-label { color: rgba(201, 184, 150, 0.55); font-size: 10px; letter-spacing: 0.55em; margin-bottom: 10px; }
+        .obj-title { color: #f5ebd8; font-size: 20px; letter-spacing: 0.3em; text-shadow: 0 0 26px rgba(255, 230, 160, 0.7); margin-bottom: 15px; }
+        .obj-hint { color: rgba(201, 184, 150, 0.8); font-size: 11px; letter-spacing: 0.28em; }
+        
+        /* SNEAK INDICATOR */
+        .sneak-indicator { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); color: rgba(245, 235, 216, 0.45); font-size: 10px; letter-spacing: 0.4em; }
+        
+        /* INTERACT PROMPT */
+        .interact-prompt { position: absolute; bottom: 18%; left: 50%; transform: translateX(-50%); color: rgba(245, 235, 216, 0.9); font-size: 14px; letter-spacing: 0.3em; text-shadow: 0 0 12px rgba(255, 220, 150, 0.5); animation: pulseText 1s infinite; }
+        @keyframes pulseText { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
+        /* CHEATS DISPLAY */
+        .cheats-display { position: absolute; left: 20px; top: 50px; color: rgba(100, 255, 160, 0.8); font-size: 10px; letter-spacing: 0.25em; text-shadow: 0 0 10px rgba(60, 255, 160, 0.35); }
+    </style>
 </head>
 <body>
-  <div id="game-container">
-    <canvas id="game-canvas"></canvas>
-  </div>
-  
-  <!-- Lobby Screen -->
-  <div id="lobby-screen" class="overlay">
-    <div class="lobby-panel">
-      <h1 class="lobby-title">BACKROOMS<br><span style="font-size:0.6em;letter-spacing:0.15em;color:#ffae4466">MULTIPLAYER</span></h1>
-      
-      <div class="connection-status">
-        <div class="status-dot" id="status-dot"></div>
-        <span id="status-text">Disconnected</span>
-      </div>
-      
-      <div class="input-group">
-        <label>YOUR NAME</label>
-        <input type="text" id="player-name" placeholder="Enter your name" maxlength="20">
-      </div>
-      
-      <div class="input-group">
-        <label>ROOM CODE (optional)</label>
-        <input type="text" id="room-code" placeholder="Leave empty to create new room" maxlength="6" style="text-transform:uppercase;">
-      </div>
-      
-      <div style="display:flex;gap:1rem;justify-content:center;">
-        <button class="btn" id="join-btn">JOIN / CREATE</button>
-      </div>
-      
-      <div class="player-list" id="player-list">
-        <div class="player-item" style="justify-content:center;color:#ffae4444;">No players yet</div>
-      </div>
-      
-      <p class="status-msg" id="status-msg"></p>
-      
-      <div style="margin-top:1.5rem;text-align:center;font-size:0.7rem;color:#ffae4444;letter-spacing:0.1em;">
-        Using PeerJS for peer-to-peer multiplayer
-      </div>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        
+        <!-- LOBBY SCREEN -->
+        <div id="lobby-screen">
+            <div class="lobby-box">
+                <div class="lobby-title">LEVEL 0</div>
+                <h1 class="lobby-heading">BACKROOMS</h1>
+                <p class="lobby-desc">You tripped through a wrong corner of reality. Someone was here before — they left 8 pages. Collect them all and the door will show itself.</p>
+                
+                <div class="input-group">
+                    <label for="player-name">YOUR NAME</label>
+                    <input type="text" id="player-name" placeholder="Enter name" maxlength="20">
+                </div>
+                
+                <div class="input-group">
+                    <label for="room-code">ROOM CODE (optional)</label>
+                    <input type="text" id="room-code" placeholder="Leave empty to host" maxlength="6" style="text-transform: uppercase;">
+                    <div class="input-hint">Share this code with friends to invite them</div>
+                </div>
+                
+                <button class="btn-primary" id="join-btn">JOIN / CREATE</button>
+                
+                <div class="status-area">
+                    <div class="status-row">
+                        <div class="status-dot" id="status-dot"></div>
+                        <span class="status-text" id="status-text">NOT CONNECTED</span>
+                    </div>
+                    <div class="status-msg" id="status-msg"></div>
+                </div>
+                
+                <div style="margin-top: 20px; text-align: left;">
+                    <label style="color: #7a6d5a; font-size: 10px; letter-spacing: 0.2em;">PLAYERS IN LOBBY:</label>
+                    <div class="player-list" id="player-list">
+                        <div class="empty-list">NO PLAYERS YET</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- HUD -->
+        <div id="hud" class="hidden">
+            <div class="crosshair"></div>
+            <div class="hud-objective" id="hud-objective">COLLECT THE PAGES — 0/8</div>
+            <div class="hud-pages" id="hud-pages">PAGES 0/8</div>
+            <div class="hud-stamina"><div class="stamina-bar" id="stamina-bar"></div></div>
+            <div class="hud-keys" id="hud-keys">[F] TORCH ON · [SHIFT] RUN · [C] SNEAK OFF</div>
+            <div class="cheats-display hidden" id="cheats-display"></div>
+        </div>
+        
+        <!-- PLAYER MARKERS -->
+        <div id="player-markers" class="hidden"></div>
+        
+        <!-- CHAT -->
+        <div id="chat-container" class="hidden">
+            <div id="chat-messages"></div>
+            <input type="text" id="chat-input" placeholder="Press T to chat..." disabled>
+        </div>
+        
+        <!-- TOAST CONTAINER -->
+        <div id="toast-container"></div>
+        
+        <!-- PAGE POPUP -->
+        <div id="page-popup" class="page-popup hidden">
+            <div class="page-content" id="page-content"></div>
+        </div>
+        
+        <!-- OBJECTIVE BANNER -->
+        <div id="objective-banner" class="objective-banner hidden">
+            <div class="obj-label">OBJECTIVE</div>
+            <div class="obj-title" id="obj-title">COLLECT THE PAGES</div>
+            <div class="obj-hint" id="obj-hint">PINNED TO THE WALLS — GET CLOSE AND PRESS E</div>
+        </div>
+        
+        <!-- SNEAK INDICATOR -->
+        <div id="sneak-indicator" class="sneak-indicator hidden">— SNEAKING —</div>
+        
+        <!-- INTERACT PROMPT -->
+        <div id="interact-prompt" class="interact-prompt hidden">TAKE PAGE</div>
+        
+        <!-- WIN SCREEN -->
+        <div id="win-screen" class="hidden">
+            <div class="win-title">ESCAPED!</div>
+            <div class="win-stats" id="win-stats"></div>
+            <div class="win-restart">Refresh the page to play again</div>
+        </div>
     </div>
-  </div>
-  
-  <!-- HUD -->
-  <div id="hud" class="hidden">
-    <div class="hud-element objective" id="objective">COLLECT THE PAGES — 0/8</div>
-    <div class="hud-element pages" id="pages-display">PAGES 0/8</div>
-    <div class="stamina-bar"><div class="stamina-fill" id="stamina-fill"></div></div>
-    <div class="crosshair"></div>
-    <div class="prompt hidden" id="prompt"></div>
-    <div id="chat-container">
-      <div id="chat-messages"></div>
-      <input type="text" id="chat-input" placeholder="Press T to chat..." disabled>
-    </div>
-    <div id="player-markers"></div>
-  </div>
-  
-  <!-- Toast container -->
-  <div id="toast-container"></div>
-  
-  <!-- Game Over screens -->
-  <div id="dead-screen" class="overlay hidden" style="background:rgba(24,4,4,0.9);">
-    <h2 style="color:#ff6b6bee;font-size:2.5rem;letter-spacing:0.2em;">YOU WERE TAKEN</h2>
-    <p style="color:#ff6b6b66;margin-top:1.5rem;font-size:0.8rem;letter-spacing:0.15em;" id="death-stats"></p>
-    <button class="btn" style="margin-top:2rem;background:#ff6b6b44;" onclick="location.reload()">TRY AGAIN</button>
-  </div>
-  
-  <div id="win-screen" class="overlay hidden" style="background:rgba(21,19,12,0.85);">
-    <h2 style="color:#ffe6aaff;font-size:2.5rem;letter-spacing:0.2em;text-shadow:0 0 50px rgba(255,255,220,0.8);">YOU GOT OUT</h2>
-    <p style="color:#ffe6aa99;margin-top:1.5rem;font-size:0.8rem;letter-spacing:0.15em;" id="win-stats"></p>
-    <button class="btn" style="margin-top:2rem;" onclick="location.reload()">PLAY AGAIN</button>
-  </div>
+    
+    <!-- THREE.JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- PEERJS FOR MULTIPLAYER -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    
+    <script>
+// ==================== GAME CONSTANTS ====================
+const CELL_SIZE = 4;
+const WALL_HEIGHT = 3;
+const PLAYER_HEIGHT = 1.62;
+const MOVE_SPEED = 2.7;
+const SPRINT_SPEED = 4.7;
+const TOTAL_PAGES = 8;
+const MAZE_SIZE = 48;
 
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script>
-    // ==================== GAME CONSTANTS ====================
-    const CELL_SIZE = 4;
-    const WALL_HEIGHT = 3;
-    const PLAYER_HEIGHT = 1.62;
-    const MOVE_SPEED = 5;
-    const SPRINT_SPEED = 8;
-    const TOTAL_PAGES = 8;
+// ==================== PAGE TEXTS (from original) ====================
+const PAGE_TEXTS = [
+    ["Day 1", "The walls keep breathing.", "I can hear them."],
+    ["Day 3", "Found another page.", "Someone else was here."],
+    ["Day 7", "The lights are dying.", "It's getting harder to see."],
+    ["Day 12", "I heard footsteps.", "But I'm alone. Right?"],
+    ["Day 18", "The exit signs lie.", "They all point nowhere."],
+    ["Day 23", "Something hunts me now.", "It hates the light."],
+    ["Day 31", "Eight pages total.", "That's what they left."],
+    ["Day ??", "If you're reading this,", "don't trust the dark."]
+];
 
-    // ==================== PEERJS MULTIPLAYER ====================
-    class MultiplayerManager {
-      constructor(game) {
+// ==================== MULTIPLAYER MANAGER ====================
+class MultiplayerManager {
+    constructor(game) {
         this.game = game;
         this.peer = null;
         this.connections = new Map();
         this.players = new Map();
         this.playerId = null;
-        this.playerName = 'Player';
+        this.playerName = 'Wanderer';
         this.roomCode = null;
         this.isHost = false;
-        this.connectionAttempts = 0;
         
+        // UI elements
         this.statusDot = document.getElementById('status-dot');
         this.statusText = document.getElementById('status-text');
         this.playerListEl = document.getElementById('player-list');
         this.statusMsgEl = document.getElementById('status-msg');
-      }
+    }
 
-      connect(name, roomCode = '') {
-        this.playerName = name || 'Player';
+    connect(name, roomCode = '') {
+        this.playerName = name || 'Wanderer';
         this.roomCode = roomCode || this.generateRoomCode();
-        this.updateStatus('connecting', 'Initializing connection...');
+        this.updateStatus('connecting', 'CONNECTING...');
         
         try {
-          this.peer = new Peer(null, {
-            debug: 2,
-            config: {
-              iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-              ]
-            }
-          });
+            // Create PeerJS connection using free public servers
+            this.peer = new Peer(null, { 
+                debug: 1,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                }
+            });
 
-          this.peer.on('open', (id) => {
-            this.playerId = id;
-            console.log('Connected with ID:', id);
-            this.updateStatus('connected', 'Connected!');
-            if (roomCode) { 
-              this.joinRoom(roomCode); 
-            } else { 
-              this.hostRoom(); 
-            }
-          });
+            this.peer.on('open', (id) => {
+                this.playerId = id;
+                console.log('Connected with ID:', id);
+                
+                if (roomCode) {
+                    this.joinRoom(roomCode);
+                } else {
+                    this.hostRoom();
+                }
+            });
 
-          this.peer.on('connection', (conn) => { 
-            console.log('Incoming connection from:', conn.peer);
-            this.handleConnection(conn); 
-          });
-          
-          this.peer.on('error', (err) => {
-            console.error('Peer error:', err);
-            this.connectionAttempts++;
-            if (this.connectionAttempts < 3) {
-              this.updateStatus('connecting', 'Retrying connection...');
-              setTimeout(() => this.retryConnection(name, roomCode), 2000);
-            } else {
-              this.updateStatus('disconnected', 'Connection failed');
-              this.showStatusMessage('Failed to connect. Try again or check your internet.');
-            }
-          });
-          
-          this.peer.on('disconnected', () => { 
-            this.updateStatus('disconnected', 'Disconnected'); 
-          });
-          
-          this.peer.on('close', () => { 
-            console.log('Peer connection closed');
-          });
+            this.peer.on('connection', (conn) => {
+                this.handleConnection(conn);
+            });
 
+            this.peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                this.updateStatus('disconnected', 'CONNECTION FAILED');
+                this.showStatusMessage('Error: ' + err.type);
+            });
+
+            this.peer.on('disconnected', () => {
+                this.updateStatus('disconnected', 'DISCONNECTED');
+            });
         } catch (e) {
-          console.error('Failed to create peer:', e);
-          this.updateStatus('disconnected', 'Initialization failed');
-          this.showStatusMessage('Error initializing connection.');
+            console.error('Failed to initialize PeerJS:', e);
+            this.updateStatus('disconnected', 'FAILED TO CONNECT');
+            this.showStatusMessage('Check your internet connection');
         }
-      }
+    }
 
-      retryConnection(name, roomCode) {
-        if (this.peer) {
-          this.peer.destroy();
-        }
-        this.connect(name, roomCode);
-      }
+    generateRoomCode() {
+        return Math.random().toString(36).substring(2, 6).toUpperCase();
+    }
 
-      generateRoomCode() { 
-        return Math.random().toString(36).substring(2, 6).toUpperCase(); 
-      }
-
-      hostRoom() {
+    hostRoom() {
         this.isHost = true;
-        this.updateStatus('connected', 'Hosting: ' + this.roomCode);
+        this.updateStatus('connected', 'HOSTING: ' + this.roomCode);
         this.addPlayer(this.playerId, this.playerName, true);
         this.showStatusMessage('Room created! Code: ' + this.roomCode);
         
-        const roomInfo = {
-          hostId: this.playerId,
-          roomCode: this.roomCode,
-          createdAt: Date.now()
-        };
-        localStorage.setItem('backrooms_room_' + this.roomCode, JSON.stringify(roomInfo));
-        localStorage.setItem('backrooms_current_room', this.roomCode);
-        
-        console.log('Hosting room:', this.roomCode, 'with ID:', this.playerId);
-      }
-
-      joinRoom(roomCode) {
-        this.updateStatus('connecting', 'Looking for room: ' + roomCode);
-        
-        const roomInfoStr = localStorage.getItem('backrooms_room_' + roomCode);
-        if (roomInfoStr) {
-          const roomInfo = JSON.parse(roomInfoStr);
-          if (roomInfo.hostId) {
-            this.connectToHost(roomInfo.hostId);
-            return;
-          }
-        }
-        
-        this.showStatusMessage('Share this Peer ID to connect: ' + this.playerId);
-        this.updateStatus('connected', 'Ready - Share your Peer ID');
-        
-        setTimeout(() => {
-          if (this.players.size === 0) {
-            this.showStatusMessage('No host found. Creating new room instead.');
-            this.hostRoom();
-          }
-        }, 3000);
-      }
-
-      connectToHost(hostId) {
-        console.log('Connecting to host:', hostId);
-        this.updateStatus('connecting', 'Connecting to host...');
-        
-        try {
-          const conn = this.peer.connect(hostId, { 
-            metadata: { 
-              name: this.playerName, 
-              type: 'join' 
-            } 
-          });
-          this.handleConnection(conn);
-        } catch (e) {
-          console.error('Failed to connect to host:', e);
-          this.updateStatus('disconnected', 'Failed to reach host');
-        }
-      }
-
-      handleConnection(conn) {
-        console.log('Handling connection:', conn.peer);
-        
-        conn.on('open', () => {
-          console.log('Connection opened with:', conn.peer);
-          this.connections.set(conn.peer, conn);
-          
-          conn.send({ 
-            type: 'player_info', 
-            name: this.playerName, 
-            isHost: this.isHost 
-          });
-          
-          if (this.isHost) {
-            this.players.forEach((player, id) => {
-              if (id !== conn.peer) {
-                conn.send({
-                  type: 'player_info',
-                  name: player.name,
-                  isHost: player.isHost,
-                  playerId: id
-                });
-              }
-            });
-          }
-          
-          conn.on('data', (data) => { 
-            console.log('Received data:', data);
-            this.handleData(conn.peer, data); 
-          });
-          
-          conn.on('close', () => { 
-            console.log('Connection closed:', conn.peer);
-            this.connections.delete(conn.peer); 
-            this.removePlayer(conn.peer); 
-          });
-          
-          conn.on('error', (err) => {
-            console.error('Connection error:', err);
-          });
-        });
-        
-        conn.on('error', (err) => {
-          console.error('Connection error on open:', err);
-        });
-      }
-
-      handleData(peerId, data) {
-        console.log('Handling data from', peerId, ':', data);
-        
-        switch (data.type) {
-          case 'player_info': 
-            this.addPlayer(data.playerId || peerId, data.name, data.isHost); 
-            break;
-          case 'position': 
-            this.updatePlayerPosition(peerId, data.x, data.z, data.rotation); 
-            break;
-          case 'chat': 
-            this.addChatMessage(data.name, data.message); 
-            break;
-          case 'page_collected': 
-            this.game.onRemotePageCollected(peerId, data.pageIndex); 
-            break;
-        }
-      }
-
-      addPlayer(id, name, isHost) {
-        if (!this.players.has(id)) {
-          console.log('Adding player:', id, name, isHost);
-          this.players.set(id, { id, name, x: 0, z: 0, rotation: 0, isHost: isHost || false });
-          this.updatePlayerList();
-          this.game.addPlayerMarker(id, name);
-        }
-      }
-
-      removePlayer(id) { 
-        console.log('Removing player:', id);
-        this.players.delete(id); 
-        this.updatePlayerList(); 
-        this.game.removePlayerMarker(id); 
-      }
-
-      updatePlayerPosition(id, x, z, rotation) {
-        const player = this.players.get(id);
-        if (player) { 
-          player.x = x; 
-          player.z = z; 
-          player.rotation = rotation; 
-          this.game.updatePlayerMarker(id, x, z, rotation); 
-        }
-      }
-
-      updatePlayerList() {
-        if (this.players.size === 0) { 
-          this.playerListEl.innerHTML = '<div class="player-item" style="justify-content:center;color:#ffae4444;">No players yet</div>'; 
-          return; 
-        }
-        let html = '';
-        this.players.forEach((player, id) => {
-          var classes = ['player-item'];
-          if (player.isHost) classes.push('host');
-          if (id === this.playerId) classes.push('you');
-          html += '<div class="' + classes.join(' ') + '">' +
-                  '<span>' + player.name + (player.isHost ? ' (HOST)' : '') + (id === this.playerId ? ' (YOU)' : '') + '</span>' +
-                  '</div>';
-        });
-        this.playerListEl.innerHTML = html;
-      }
-
-      updateStatus(state, text) { 
-        this.statusDot.className = 'status-dot ' + state; 
-        this.statusText.textContent = text; 
-      }
-      
-      showStatusMessage(msg) { 
-        this.statusMsgEl.textContent = msg; 
-      }
-      
-      sendPosition(x, z, rotation) { 
-        this.broadcast({ type: 'position', x: x, z: z, rotation: rotation }); 
-      }
-      
-      broadcast(data) { 
-        this.connections.forEach(function(conn) { 
-          if (conn.open) {
-            try {
-              conn.send(data); 
-            } catch (e) {
-              console.error('Failed to send data:', e);
-            }
-          }
-        }); 
-      }
-      
-      sendChat(message) { 
-        var data = { type: 'chat', name: this.playerName, message: message }; 
-        this.broadcast(data); 
-        this.addChatMessage(this.playerName, message); 
-      }
-      
-      addChatMessage(name, message) {
-        var chatMessages = document.getElementById('chat-messages');
-        var msgEl = document.createElement('div');
-        msgEl.className = 'chat-msg';
-        msgEl.innerHTML = '<span class="name">' + this.escapeHtml(name) + ':</span> ' + this.escapeHtml(message);
-        chatMessages.appendChild(msgEl);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-      }
-      
-      escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-      }
-      
-      disconnect() {
-        if (this.peer) {
-          this.connections.forEach(conn => conn.close());
-          this.peer.destroy();
-          this.peer = null;
-        }
-        this.connections.clear();
-        this.players.clear();
-        this.updateStatus('disconnected', 'Disconnected');
-      }
+        // Store room info for others to join
+        localStorage.setItem('backrooms_room_' + this.roomCode, this.playerId);
     }
 
-    // ==================== GAME ENGINE ====================
-    class Game {
-      constructor() {
+    joinRoom(roomCode) {
+        const hostId = localStorage.getItem('backrooms_room_' + roomCode);
+        
+        if (hostId) {
+            this.connectToHost(hostId);
+        } else {
+            // Try to find room via PeerJS discovery (simplified - just create new)
+            this.updateStatus('connecting', 'SEARCHING FOR ROOM...');
+            setTimeout(() => {
+                this.hostRoom();
+                this.showStatusMessage('Room not found. Created new room: ' + this.roomCode);
+            }, 2000);
+        }
+    }
+
+    connectToHost(hostId) {
+        try {
+            const conn = this.peer.connect(hostId, { 
+                metadata: { name: this.playerName, type: 'join' } 
+            });
+            this.handleConnection(conn);
+        } catch (e) {
+            this.showStatusMessage('Failed to connect to host');
+        }
+    }
+
+    handleConnection(conn) {
+        conn.on('open', () => {
+            console.log('Connected to:', conn.peer);
+            this.connections.set(conn.peer, conn);
+            
+            // Send our info
+            conn.send({
+                type: 'player_info',
+                name: this.playerName,
+                isHost: false
+            });
+            
+            conn.on('data', (data) => {
+                this.handleData(conn.peer, data);
+            });
+            
+            conn.on('close', () => {
+                this.connections.delete(conn.peer);
+                this.removePlayer(conn.peer);
+            });
+        });
+    }
+
+    handleData(peerId, data) {
+        switch (data.type) {
+            case 'player_info':
+                this.addPlayer(peerId, data.name, data.isHost);
+                break;
+            case 'position':
+                this.updatePlayerPosition(peerId, data.x, data.z, data.rotation);
+                break;
+            case 'chat':
+                this.addChatMessage(data.name, data.message);
+                break;
+            case 'page_collected':
+                this.game.onRemotePageCollected(peerId, data.pageIndex);
+                break;
+            case 'player_list':
+                // Host sent us the player list
+                data.players.forEach(p => {
+                    if (p.id !== this.playerId) {
+                        this.addPlayer(p.id, p.name, p.isHost);
+                    }
+                });
+                break;
+        }
+    }
+
+    addPlayer(id, name, isHost) {
+        if (!this.players.has(id)) {
+            this.players.set(id, { id, name, x: 0, z: 0, rotation: 0, isHost: isHost || false });
+            this.updatePlayerList();
+            this.game.addPlayerMarker(id, name);
+            
+            // If we're host, send updated player list to everyone
+            if (this.isHost) {
+                this.broadcastPlayerList();
+            }
+        }
+    }
+
+    removePlayer(id) {
+        this.players.delete(id);
+        this.updatePlayerList();
+        this.game.removePlayerMarker(id);
+        
+        if (this.isHost) {
+            this.broadcastPlayerList();
+        }
+    }
+
+    updatePlayerPosition(id, x, z, rotation) {
+        const player = this.players.get(id);
+        if (player) {
+            player.x = x;
+            player.z = z;
+            player.rotation = rotation;
+            this.game.updatePlayerMarker(id, x, z, rotation);
+        }
+    }
+
+    updatePlayerList() {
+        if (this.players.size === 0) {
+            this.playerListEl.innerHTML = '<div class="empty-list">NO PLAYERS YET</div>';
+            return;
+        }
+        
+        let html = '';
+        this.players.forEach((player, id) => {
+            const classes = ['player-item'];
+            if (player.isHost) classes.push('host');
+            if (id === this.playerId) classes.push('you');
+            
+            html += '<div class="' + classes.join(' ') + '">' +
+                '<span class="player-name">' + player.name + 
+                (player.isHost ? ' (HOST)' : '') + 
+                (id === this.playerId ? ' (YOU)' : '') + 
+                '</span></div>';
+        });
+        this.playerListEl.innerHTML = html;
+    }
+
+    broadcastPlayerList() {
+        const players = [];
+        this.players.forEach((player, id) => {
+            players.push({ id, name: player.name, isHost: player.isHost });
+        });
+        
+        this.broadcast({
+            type: 'player_list',
+            players: players
+        });
+    }
+
+    updateStatus(state, text) {
+        this.statusDot.className = 'status-dot ' + state;
+        this.statusText.textContent = text;
+    }
+
+    showStatusMessage(msg) {
+        this.statusMsgEl.textContent = msg;
+    }
+
+    sendPosition(x, z, rotation) {
+        this.broadcast({
+            type: 'position',
+            x: x,
+            z: z,
+            rotation: rotation
+        });
+    }
+
+    broadcast(data) {
+        this.connections.forEach((conn) => {
+            if (conn.open) {
+                try {
+                    conn.send(data);
+                } catch (e) {
+                    console.warn('Failed to send to peer:', e);
+                }
+            }
+        });
+    }
+
+    sendChat(message) {
+        const data = {
+            type: 'chat',
+            name: this.playerName,
+            message: message
+        };
+        this.broadcast(data);
+        this.addChatMessage(this.playerName, message);
+    }
+
+    addChatMessage(name, message) {
+        const chatMessages = document.getElementById('chat-messages');
+        const msgEl = document.createElement('div');
+        msgEl.className = 'chat-msg';
+        msgEl.innerHTML = '<span class="chat-name">' + name + ':</span> <span class="chat-text">' + message + '</span>';
+        chatMessages.appendChild(msgEl);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+}
+
+// ==================== GAME ENGINE ====================
+class Game {
+    constructor() {
         this.canvas = document.getElementById('game-canvas');
         this.container = document.getElementById('game-container');
-        this.hud = document.getElementById('hud');
-        this.lobbyScreen = document.getElementById('lobby-screen');
         
+        // Three.js setup
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 100);
         this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         
-        this.scene.background = new THREE.Color(0x141106);
-        this.scene.fog = new THREE.FogExp2(0x141106, 0.03);
-        var ambientLight = new THREE.AmbientLight(0x3a3420, 0.5);
-        this.scene.add(ambientLight);
+        // Scene setup (matching original backrooms aesthetic)
+        const fogColor = new THREE.Color(0x141106);
+        this.scene.background = fogColor;
+        this.scene.fog = new THREE.FogExp2(fogColor, 0.036);
         
+        // Lighting - mono-yellow wash like the original
+        this.scene.add(new THREE.AmbientLight(0x3a3420, 0.85));
+        this.scene.add(new THREE.HemisphereLight(0xfff0c2, 0x4a3f24, 0.5));
+        
+        // Player state
         this.playerPos = new THREE.Vector3(0, PLAYER_HEIGHT, 0);
-        this.playerYaw = 0; this.playerPitch = 0;
+        this.playerYaw = 0;
+        this.playerPitch = 0;
         this.keys = new Set();
-        this.isSprinting = false; this.stamina = 1; this.pagesCollected = 0;
+        this.stamina = 1;
+        this.pagesCollected = 0;
+        this.isPlaying = false;
+        this.startTime = 0;
         
+        // Multiplayer
         this.multiplayer = new MultiplayerManager(this);
         this.playerMarkers = new Map();
-        this.walls = []; this.pages = []; this.mazeSize = 20;
-        this.isPlaying = false; this.startTime = 0;
+        
+        // Level data
+        this.walls = [];
+        this.pages = [];
+        
+        // UI
         this.chatInput = document.getElementById('chat-input');
         this.chatActive = false;
         
-        this.setupInputs(); this.generateLevel(); this.setupUI(); this.animate();
-      }
-
-      setupUI() {
-        var self = this;
-        var nameInput = document.getElementById('player-name');
+        this.setupInputs();
+        this.generateLevel();
+        this.setupUI();
+        this.animate();
+    }
+    
+    setupUI() {
+        const self = this;
+        const nameInput = document.getElementById('player-name');
+        const roomInput = document.getElementById('room-code');
+        
+        // Load saved name
         nameInput.value = localStorage.getItem('backrooms_name') || '';
-        var roomInput = document.getElementById('room-code');
+        
         document.getElementById('join-btn').addEventListener('click', function() {
-          var name = nameInput.value.trim() || 'Player';
-          var roomCode = roomInput.value.trim().toUpperCase();
-          localStorage.setItem('backrooms_name', name);
-          self.multiplayer.connect(name, roomCode);
-          setTimeout(function() { self.startGame(); }, 1000);
+            const name = nameInput.value.trim() || 'Wanderer';
+            const roomCode = roomInput.value.trim().toUpperCase();
+            
+            localStorage.setItem('backrooms_name', name);
+            
+            // Connect to multiplayer
+            self.multiplayer.connect(name, roomCode);
+            
+            // Start game after brief delay
+            setTimeout(function() {
+                self.startGame();
+            }, 1500);
         });
+        
+        // Chat input
         this.chatInput.addEventListener('keydown', function(e) {
-          if (e.key === 'Enter' && self.chatInput.value.trim()) { self.multiplayer.sendChat(self.chatInput.value.trim()); self.chatInput.value = ''; self.toggleChat(false); }
-          else if (e.key === 'Escape') { self.toggleChat(false); }
+            if (e.key === 'Enter' && self.chatInput.value.trim()) {
+                self.multiplayer.sendChat(self.chatInput.value.trim());
+                self.chatInput.value = '';
+                self.toggleChat(false);
+            } else if (e.key === 'Escape') {
+                self.toggleChat(false);
+            }
         });
+        
+        // Window resize
         window.addEventListener('resize', function() {
-          self.camera.aspect = window.innerWidth / window.innerHeight;
-          self.camera.updateProjectionMatrix();
-          self.renderer.setSize(window.innerWidth, window.innerHeight);
+            self.camera.aspect = window.innerWidth / window.innerHeight;
+            self.camera.updateProjectionMatrix();
+            self.renderer.setSize(window.innerWidth, window.innerHeight);
         });
-      }
-
-      setupInputs() {
-        var self = this;
+    }
+    
+    setupInputs() {
+        const self = this;
+        
         document.addEventListener('keydown', function(e) {
-          self.keys.add(e.code);
-          if (e.code === 'KeyT' && self.isPlaying) self.toggleChat(true);
-          if (e.code === 'Escape' && self.chatActive) self.toggleChat(false);
+            self.keys.add(e.code);
+            
+            // Toggle chat with T
+            if (e.code === 'KeyT' && self.isPlaying) {
+                self.toggleChat(true);
+            }
+            if (e.code === 'Escape' && self.chatActive) {
+                self.toggleChat(false);
+            }
         });
-        document.addEventListener('keyup', function(e) { self.keys.delete(e.code); });
+        
+        document.addEventListener('keyup', function(e) {
+            self.keys.delete(e.code);
+        });
+        
         document.addEventListener('mousemove', function(e) {
-          if (self.isPlaying && !self.chatActive && document.pointerLockElement === self.canvas) {
-            self.playerYaw -= e.movementX * 0.002;
-            self.playerPitch -= e.movementY * 0.002;
-            self.playerPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, self.playerPitch));
-          }
+            if (self.isPlaying && !self.chatActive && document.pointerLockElement === self.canvas) {
+                self.playerYaw -= e.movementX * 0.002;
+                self.playerPitch -= e.movementY * 0.002;
+                self.playerPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, self.playerPitch));
+            }
         });
-        this.canvas.addEventListener('click', function() { if (self.isPlaying && !self.chatActive) { self.canvas.requestPointerLock(); } });
-      }
-
-      toggleChat(active) {
+        
+        this.canvas.addEventListener('click', function() {
+            if (self.isPlaying && !self.chatActive) {
+                self.canvas.requestPointerLock();
+            }
+        });
+    }
+    
+    toggleChat(active) {
         this.chatActive = active;
         this.chatInput.disabled = !active;
-        if (active) { this.chatInput.focus(); document.exitPointerLock(); } else { this.canvas.requestPointerLock(); }
+        
+        if (active) {
+            this.chatInput.focus();
+            document.exitPointerLock();
+        } else {
+            this.canvas.requestPointerLock();
+        }
+        
         document.getElementById('chat-container').classList.toggle('hidden', !active);
-      }
-
-      generateLevel() {
-        var wallMat = new THREE.MeshStandardMaterial({ color: 0xcb9f5e });
-        var floorGeo = new THREE.PlaneGeometry(this.mazeSize * CELL_SIZE, this.mazeSize * CELL_SIZE);
-        var floorMat = new THREE.MeshStandardMaterial({ color: 0x4a3f24 });
-        var floor = new THREE.Mesh(floorGeo, floorMat);
+    }
+    
+    generateLevel() {
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xcb9f5e });
+        
+        // Floor and ceiling
+        const floorGeo = new THREE.PlaneGeometry(MAZE_SIZE * CELL_SIZE, MAZE_SIZE * CELL_SIZE);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x4a3f24 });
+        
+        const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
         this.scene.add(floor);
-        var ceiling = new THREE.Mesh(floorGeo, floorMat);
+        
+        const ceiling = new THREE.Mesh(floorGeo, floorMat);
         ceiling.rotation.x = Math.PI / 2;
         ceiling.position.y = WALL_HEIGHT;
         this.scene.add(ceiling);
-        for (var x = 0; x < this.mazeSize; x++) {
-          for (var z = 0; z < this.mazeSize; z++) {
-            if (x === 0 || x === this.mazeSize - 1 || z === 0 || z === this.mazeSize - 1) { this.createWall(x, z, wallMat); continue; }
-            if (Math.random() < 0.3) { this.createWall(x, z, wallMat); }
-          }
+        
+        // Generate walls using simple maze algorithm
+        for (let x = 0; x < MAZE_SIZE; x++) {
+            for (let z = 0; z < MAZE_SIZE; z++) {
+                // Border walls
+                if (x === 0 || x === MAZE_SIZE - 1 || z === 0 || z === MAZE_SIZE - 1) {
+                    this.createWall(x, z, wallMat);
+                    continue;
+                }
+                
+                // Random internal walls (30% chance)
+                if (Math.random() < 0.3) {
+                    this.createWall(x, z, wallMat);
+                }
+            }
         }
-        var pageGeo = new THREE.PlaneGeometry(0.3, 0.4);
-        var pageMat = new THREE.MeshStandardMaterial({ color: 0xfff4cc, emissive: 0xfff4cc, emissiveIntensity: 0.3 });
-        for (var i = 0; i < TOTAL_PAGES; i++) {
-          var px = Math.floor(Math.random() * (this.mazeSize - 2)) + 1;
-          var pz = Math.floor(Math.random() * (this.mazeSize - 2)) + 1;
-          var page = new THREE.Mesh(pageGeo, pageMat);
-          page.position.set((px - this.mazeSize/2) * CELL_SIZE + CELL_SIZE/2, 1.5, (pz - this.mazeSize/2) * CELL_SIZE + CELL_SIZE/2);
-          page.rotation.y = Math.random() * Math.PI;
-          page.userData = { index: i, collected: false };
-          this.scene.add(page);
-          this.pages.push(page);
+        
+        // Place pages
+        const pageGeo = new THREE.PlaneGeometry(0.3, 0.4);
+        const pageMat = new THREE.MeshStandardMaterial({ 
+            color: 0xfff4cc, 
+            emissive: 0xfff4cc, 
+            emissiveIntensity: 0.3 
+        });
+        
+        for (let i = 0; i < TOTAL_PAGES; i++) {
+            const px = Math.floor(Math.random() * (MAZE_SIZE - 2)) + 1;
+            const pz = Math.floor(Math.random() * (MAZE_SIZE - 2)) + 1;
+            
+            const page = new THREE.Mesh(pageGeo, pageMat);
+            page.position.set(
+                (px - MAZE_SIZE/2) * CELL_SIZE + CELL_SIZE/2,
+                1.5,
+                (pz - MAZE_SIZE/2) * CELL_SIZE + CELL_SIZE/2
+            );
+            page.rotation.y = Math.random() * Math.PI;
+            page.userData = { index: i, collected: false };
+            
+            this.scene.add(page);
+            this.pages.push(page);
         }
-        for (var li = 0; li < 10; li++) {
-          var light = new THREE.PointLight(0xffeebb, 0.5, 15);
-          light.position.set((Math.random() * this.mazeSize - this.mazeSize/2) * CELL_SIZE, 2.5, (Math.random() * this.mazeSize - this.mazeSize/2) * CELL_SIZE);
-          this.scene.add(light);
+        
+        // Add some point lights
+        for (let i = 0; i < 15; i++) {
+            const light = new THREE.PointLight(0xffeebb, 0.5, 15);
+            light.position.set(
+                (Math.random() * MAZE_SIZE - MAZE_SIZE/2) * CELL_SIZE,
+                2.5,
+                (Math.random() * MAZE_SIZE - MAZE_SIZE/2) * CELL_SIZE
+            );
+            this.scene.add(light);
         }
-      }
-
-      createWall(x, z, material) {
-        var wallGeo = new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT, 0.2);
-        var wall = new THREE.Mesh(wallGeo, material);
-        wall.position.set((x - this.mazeSize/2) * CELL_SIZE + CELL_SIZE/2, WALL_HEIGHT / 2, (z - this.mazeSize/2) * CELL_SIZE + CELL_SIZE/2);
+    }
+    
+    createWall(x, z, material) {
+        const wallGeo = new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT, 0.2);
+        const wall = new THREE.Mesh(wallGeo, material);
+        wall.position.set(
+            (x - MAZE_SIZE/2) * CELL_SIZE + CELL_SIZE/2,
+            WALL_HEIGHT / 2,
+            (z - MAZE_SIZE/2) * CELL_SIZE + CELL_SIZE/2
+        );
         this.scene.add(wall);
         this.walls.push(wall);
-      }
-
-      startGame() {
-        this.lobbyScreen.classList.add('hidden');
-        this.hud.classList.remove('hidden');
+    }
+    
+    startGame() {
+        document.getElementById('lobby-screen').classList.add('hidden');
+        document.getElementById('hud').classList.remove('hidden');
+        document.getElementById('player-markers').classList.remove('hidden');
+        
         this.isPlaying = true;
         this.startTime = Date.now();
+        
+        // Reset player position
         this.playerPos.set(0, PLAYER_HEIGHT, 0);
-        this.playerYaw = 0; this.playerPitch = 0;
+        this.playerYaw = 0;
+        this.playerPitch = 0;
+        
+        // Request pointer lock
         this.canvas.requestPointerLock();
+        
         this.showToast('GAME STARTED - Find all 8 pages!');
-      }
-
-      update(deltaTime) {
+    }
+    
+    update(deltaTime) {
         if (!this.isPlaying) return;
-        var speed = this.isSprinting && this.stamina > 0 ? SPRINT_SPEED : MOVE_SPEED;
-        var moveDir = new THREE.Vector3();
+        
+        // Movement
+        const speed = (this.keys.has('ShiftLeft') && this.stamina > 0) ? SPRINT_SPEED : MOVE_SPEED;
+        const moveDir = new THREE.Vector3();
+        
         if (this.keys.has('KeyW')) moveDir.z -= 1;
         if (this.keys.has('KeyS')) moveDir.z += 1;
         if (this.keys.has('KeyA')) moveDir.x -= 1;
         if (this.keys.has('KeyD')) moveDir.x += 1;
+        
         if (moveDir.length() > 0) {
-          moveDir.normalize();
-          moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.playerYaw);
-          var newPos = this.playerPos.clone();
-          newPos.x += moveDir.x * speed * deltaTime;
-          newPos.z += moveDir.z * speed * deltaTime;
-          if (!this.checkCollision(newPos)) {
-            this.playerPos.copy(newPos);
-            if (this.isSprinting && this.keys.has('ShiftLeft')) { this.stamina = Math.max(0, this.stamina - deltaTime * 0.5); }
-          }
+            moveDir.normalize();
+            moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.playerYaw);
+            
+            const newPos = this.playerPos.clone();
+            newPos.x += moveDir.x * speed * deltaTime;
+            newPos.z += moveDir.z * speed * deltaTime;
+            
+            if (!this.checkCollision(newPos)) {
+                this.playerPos.copy(newPos);
+                
+                // Stamina management
+                if (this.keys.has('ShiftLeft')) {
+                    this.stamina = Math.max(0, this.stamina - deltaTime * 0.13);
+                }
+            }
         }
-        if (!this.isSprinting || !this.keys.has('ShiftLeft')) { this.stamina = Math.min(1, this.stamina + deltaTime * 0.3); }
-        this.isSprinting = this.keys.has('ShiftLeft') && this.stamina > 0;
+        
+        // Stamina regeneration
+        if (!this.keys.has('ShiftLeft')) {
+            this.stamina = Math.min(1, this.stamina + deltaTime * 0.16);
+        }
+        
+        // Update camera
         this.camera.position.copy(this.playerPos);
         this.camera.rotation.order = 'YXZ';
         this.camera.rotation.y = this.playerYaw;
         this.camera.rotation.x = this.playerPitch;
+        
+        // Check page collection
         this.checkPageCollection();
+        
+        // Update HUD
         this.updateHUD();
-        if (this.multiplayer.peer && this.multiplayer.peer.id) { this.multiplayer.sendPosition(this.playerPos.x, this.playerPos.z, this.playerYaw); }
-      }
-
-      checkCollision(pos) {
-        var playerRadius = 0.3;
-        for (var i = 0; i < this.walls.length; i++) {
-          var wall = this.walls[i];
-          var dx = Math.abs(pos.x - wall.position.x);
-          var dz = Math.abs(pos.z - wall.position.z);
-          if (dx < CELL_SIZE/2 + playerRadius && dz < 0.1 + playerRadius) return true;
-          if (dx < 0.1 + playerRadius && dz < CELL_SIZE/2 + playerRadius) return true;
+        
+        // Send position to other players
+        if (this.multiplayer.peer && this.multiplayer.peer.id) {
+            this.multiplayer.sendPosition(this.playerPos.x, this.playerPos.z, this.playerYaw);
         }
+    }
+    
+    checkCollision(pos) {
+        const playerRadius = 0.3;
+        
+        for (let i = 0; i < this.walls.length; i++) {
+            const wall = this.walls[i];
+            const dx = Math.abs(pos.x - wall.position.x);
+            const dz = Math.abs(pos.z - wall.position.z);
+            
+            if (dx < CELL_SIZE/2 + playerRadius && dz < 0.1 + playerRadius) return true;
+            if (dx < 0.1 + playerRadius && dz < CELL_SIZE/2 + playerRadius) return true;
+        }
+        
         return false;
-      }
-
-      checkPageCollection() {
-        for (var i = 0; i < this.pages.length; i++) {
-          var page = this.pages[i];
-          if (page.userData.collected) continue;
-          var dist = this.playerPos.distanceTo(page.position);
-          if (dist < 1.5) {
-            page.userData.collected = true;
-            page.visible = false;
-            this.pagesCollected++;
-            this.showToast('PAGE ' + this.pagesCollected + '/' + TOTAL_PAGES + ' COLLECTED');
-            this.multiplayer.broadcast({ type: 'page_collected', pageIndex: page.userData.index, playerId: this.multiplayer.playerId });
-            if (this.pagesCollected >= TOTAL_PAGES) this.winGame();
-          }
+    }
+    
+    checkPageCollection() {
+        for (let i = 0; i < this.pages.length; i++) {
+            const page = this.pages[i];
+            if (page.userData.collected) continue;
+            
+            const dist = this.playerPos.distanceTo(page.position);
+            if (dist < 1.5) {
+                page.userData.collected = true;
+                page.visible = false;
+                this.pagesCollected++;
+                
+                this.showToast('PAGE ' + this.pagesCollected + '/' + TOTAL_PAGES + ' COLLECTED');
+                
+                // Show page text
+                this.showPageText(i);
+                
+                // Notify other players
+                this.multiplayer.broadcast({
+                    type: 'page_collected',
+                    pageIndex: page.userData.index,
+                    playerId: this.multiplayer.playerId
+                });
+                
+                // Check win condition
+                if (this.pagesCollected >= TOTAL_PAGES) {
+                    this.winGame();
+                }
+            }
         }
-      }
-
-      updateHUD() {
-        document.getElementById('pages-display').textContent = 'PAGES ' + this.pagesCollected + '/' + TOTAL_PAGES;
-        document.getElementById('objective').textContent = 'COLLECT THE PAGES — ' + this.pagesCollected + '/' + TOTAL_PAGES;
-        var staminaFill = document.getElementById('stamina-fill');
-        staminaFill.style.width = (this.stamina * 100) + '%';
-        staminaFill.className = 'stamina-fill' + (this.stamina < 0.25 ? ' low' : '');
-      }
-
-      showToast(message) {
-        var container = document.getElementById('toast-container');
-        var toast = document.createElement('div');
+    }
+    
+    showPageText(index) {
+        const lines = PAGE_TEXTS[index % PAGE_TEXTS.length];
+        const content = document.getElementById('page-content');
+        content.innerHTML = lines.map(l => '<div>' + l + '</div>').join('');
+        document.getElementById('page-popup').classList.remove('hidden');
+        
+        setTimeout(() => {
+            document.getElementById('page-popup').classList.add('hidden');
+        }, 6500);
+    }
+    
+    updateHUD() {
+        document.getElementById('hud-objective').textContent = 'COLLECT THE PAGES — ' + this.pagesCollected + '/' + TOTAL_PAGES;
+        document.getElementById('hud-pages').textContent = 'PAGES ' + this.pagesCollected + '/' + TOTAL_PAGES;
+        
+        const staminaBar = document.getElementById('stamina-bar');
+        staminaBar.style.width = (this.stamina * 100) + '%';
+        staminaBar.className = 'stamina-bar' + (this.stamina < 0.25 ? ' low' : '');
+        
+        const flashlightState = 'ON'; // Simplified
+        const sneakState = this.keys.has('KeyC') ? 'ON' : 'OFF';
+        document.getElementById('hud-keys').textContent = '[F] TORCH ' + flashlightState + ' · [SHIFT] RUN · [C] SNEAK ' + sneakState;
+    }
+    
+    showToast(message) {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
         toast.className = 'toast';
         toast.textContent = message;
         container.appendChild(toast);
-        setTimeout(function() { toast.remove(); }, 3000);
-      }
-
-      addPlayerMarker(playerId, name) {
-        var marker = document.createElement('div');
+        
+        setTimeout(() => {
+            toast.remove();
+        }, 3000);
+    }
+    
+    addPlayerMarker(playerId, name) {
+        const marker = document.createElement('div');
         marker.className = 'player-marker';
         marker.setAttribute('data-name', name);
         marker.id = 'marker-' + playerId;
         document.getElementById('player-markers').appendChild(marker);
         this.playerMarkers.set(playerId, marker);
-      }
-
-      updatePlayerMarker(playerId, x, z, rotation) {
-        var marker = this.playerMarkers.get(playerId);
+    }
+    
+    updatePlayerMarker(playerId, x, z, rotation) {
+        const marker = this.playerMarkers.get(playerId);
         if (!marker) return;
-        var vector = new THREE.Vector3(x, PLAYER_HEIGHT, z);
+        
+        // Project 3D position to 2D screen space
+        const vector = new THREE.Vector3(x, PLAYER_HEIGHT, z);
         vector.project(this.camera);
-        var halfWidth = window.innerWidth / 2;
-        var halfHeight = window.innerHeight / 2;
+        
+        const halfWidth = window.innerWidth / 2;
+        const halfHeight = window.innerHeight / 2;
+        
         marker.style.left = ((vector.x * halfWidth) + halfWidth) + 'px';
         marker.style.top = (-(vector.y * halfHeight) + halfHeight) + 'px';
         marker.style.display = 'block';
-      }
-
-      removePlayerMarker(playerId) {
-        var marker = this.playerMarkers.get(playerId);
-        if (marker) { marker.remove(); this.playerMarkers.delete(playerId); }
-      }
-
-      onRemotePageCollected(playerId, pageIndex) {
-        var player = this.multiplayer.players.get(playerId);
-        if (player) { this.showToast(player.name + ' collected a page!'); }
-      }
-
-      winGame() {
+    }
+    
+    removePlayerMarker(playerId) {
+        const marker = this.playerMarkers.get(playerId);
+        if (marker) {
+            marker.remove();
+            this.playerMarkers.delete(playerId);
+        }
+    }
+    
+    onRemotePageCollected(playerId, pageIndex) {
+        const player = this.multiplayer.players.get(playerId);
+        if (player) {
+            this.showToast(player.name + ' collected a page!');
+        }
+    }
+    
+    winGame() {
         this.isPlaying = false;
         document.exitPointerLock();
-        var elapsed = Math.floor((Date.now() - this.startTime) / 1000);
-        var minutes = Math.floor(elapsed / 60);
-        var seconds = elapsed % 60;
-        document.getElementById('win-stats').textContent = 'ALL 8 PAGES · ESCAPED IN ' + minutes + ':' + seconds.toString().padStart(2, '0');
+        
+        const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        
+        document.getElementById('win-stats').textContent = 
+            'ALL 8 PAGES · ESCAPED IN ' + minutes + ':' + seconds.toString().padStart(2, '0');
         document.getElementById('win-screen').classList.remove('hidden');
-      }
-
-      animate() {
-        var self = this;
+    }
+    
+    animate() {
+        const self = this;
         requestAnimationFrame(function() { self.animate(); });
-        var deltaTime = 0.016;
+        
+        const deltaTime = 0.016; // ~60 FPS
         this.update(deltaTime);
         this.renderer.render(this.scene, this.camera);
-      }
     }
+}
 
-    // Start game when page loads
-    window.addEventListener('DOMContentLoaded', function() { window.game = new Game(); });
-  </script>
+// ==================== INITIALIZE GAME ====================
+window.addEventListener('DOMContentLoaded', function() {
+    window.game = new Game();
+});
+    </script>
 </body>
 </html>

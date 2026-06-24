@@ -144,6 +144,593 @@
 
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="game-multiplayer.js"></script>
+  <script>
+    // ==================== GAME CONSTANTS ====================
+    const CELL_SIZE = 4;
+    const WALL_HEIGHT = 3;
+    const PLAYER_HEIGHT = 1.62;
+    const MOVE_SPEED = 5;
+    const SPRINT_SPEED = 8;
+    const TOTAL_PAGES = 8;
+
+    // ==================== PEERJS MULTIPLAYER ====================
+    class MultiplayerManager {
+      constructor(game) {
+        this.game = game;
+        this.peer = null;
+        this.connections = new Map();
+        this.players = new Map();
+        this.playerId = null;
+        this.playerName = 'Player';
+        this.roomCode = null;
+        this.isHost = false;
+        this.connectionAttempts = 0;
+        
+        this.statusDot = document.getElementById('status-dot');
+        this.statusText = document.getElementById('status-text');
+        this.playerListEl = document.getElementById('player-list');
+        this.statusMsgEl = document.getElementById('status-msg');
+      }
+
+      connect(name, roomCode = '') {
+        this.playerName = name || 'Player';
+        this.roomCode = roomCode || this.generateRoomCode();
+        this.updateStatus('connecting', 'Initializing connection...');
+        
+        try {
+          this.peer = new Peer(null, {
+            debug: 2,
+            config: {
+              iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+              ]
+            }
+          });
+
+          this.peer.on('open', (id) => {
+            this.playerId = id;
+            console.log('Connected with ID:', id);
+            this.updateStatus('connected', 'Connected!');
+            if (roomCode) { 
+              this.joinRoom(roomCode); 
+            } else { 
+              this.hostRoom(); 
+            }
+          });
+
+          this.peer.on('connection', (conn) => { 
+            console.log('Incoming connection from:', conn.peer);
+            this.handleConnection(conn); 
+          });
+          
+          this.peer.on('error', (err) => {
+            console.error('Peer error:', err);
+            this.connectionAttempts++;
+            if (this.connectionAttempts < 3) {
+              this.updateStatus('connecting', 'Retrying connection...');
+              setTimeout(() => this.retryConnection(name, roomCode), 2000);
+            } else {
+              this.updateStatus('disconnected', 'Connection failed');
+              this.showStatusMessage('Failed to connect. Try again or check your internet.');
+            }
+          });
+          
+          this.peer.on('disconnected', () => { 
+            this.updateStatus('disconnected', 'Disconnected'); 
+          });
+          
+          this.peer.on('close', () => { 
+            console.log('Peer connection closed');
+          });
+
+        } catch (e) {
+          console.error('Failed to create peer:', e);
+          this.updateStatus('disconnected', 'Initialization failed');
+          this.showStatusMessage('Error initializing connection.');
+        }
+      }
+
+      retryConnection(name, roomCode) {
+        if (this.peer) {
+          this.peer.destroy();
+        }
+        this.connect(name, roomCode);
+      }
+
+      generateRoomCode() { 
+        return Math.random().toString(36).substring(2, 6).toUpperCase(); 
+      }
+
+      hostRoom() {
+        this.isHost = true;
+        this.updateStatus('connected', 'Hosting: ' + this.roomCode);
+        this.addPlayer(this.playerId, this.playerName, true);
+        this.showStatusMessage('Room created! Code: ' + this.roomCode);
+        
+        const roomInfo = {
+          hostId: this.playerId,
+          roomCode: this.roomCode,
+          createdAt: Date.now()
+        };
+        localStorage.setItem('backrooms_room_' + this.roomCode, JSON.stringify(roomInfo));
+        localStorage.setItem('backrooms_current_room', this.roomCode);
+        
+        console.log('Hosting room:', this.roomCode, 'with ID:', this.playerId);
+      }
+
+      joinRoom(roomCode) {
+        this.updateStatus('connecting', 'Looking for room: ' + roomCode);
+        
+        const roomInfoStr = localStorage.getItem('backrooms_room_' + roomCode);
+        if (roomInfoStr) {
+          const roomInfo = JSON.parse(roomInfoStr);
+          if (roomInfo.hostId) {
+            this.connectToHost(roomInfo.hostId);
+            return;
+          }
+        }
+        
+        this.showStatusMessage('Share this Peer ID to connect: ' + this.playerId);
+        this.updateStatus('connected', 'Ready - Share your Peer ID');
+        
+        setTimeout(() => {
+          if (this.players.size === 0) {
+            this.showStatusMessage('No host found. Creating new room instead.');
+            this.hostRoom();
+          }
+        }, 3000);
+      }
+
+      connectToHost(hostId) {
+        console.log('Connecting to host:', hostId);
+        this.updateStatus('connecting', 'Connecting to host...');
+        
+        try {
+          const conn = this.peer.connect(hostId, { 
+            metadata: { 
+              name: this.playerName, 
+              type: 'join' 
+            } 
+          });
+          this.handleConnection(conn);
+        } catch (e) {
+          console.error('Failed to connect to host:', e);
+          this.updateStatus('disconnected', 'Failed to reach host');
+        }
+      }
+
+      handleConnection(conn) {
+        console.log('Handling connection:', conn.peer);
+        
+        conn.on('open', () => {
+          console.log('Connection opened with:', conn.peer);
+          this.connections.set(conn.peer, conn);
+          
+          conn.send({ 
+            type: 'player_info', 
+            name: this.playerName, 
+            isHost: this.isHost 
+          });
+          
+          if (this.isHost) {
+            this.players.forEach((player, id) => {
+              if (id !== conn.peer) {
+                conn.send({
+                  type: 'player_info',
+                  name: player.name,
+                  isHost: player.isHost,
+                  playerId: id
+                });
+              }
+            });
+          }
+          
+          conn.on('data', (data) => { 
+            console.log('Received data:', data);
+            this.handleData(conn.peer, data); 
+          });
+          
+          conn.on('close', () => { 
+            console.log('Connection closed:', conn.peer);
+            this.connections.delete(conn.peer); 
+            this.removePlayer(conn.peer); 
+          });
+          
+          conn.on('error', (err) => {
+            console.error('Connection error:', err);
+          });
+        });
+        
+        conn.on('error', (err) => {
+          console.error('Connection error on open:', err);
+        });
+      }
+
+      handleData(peerId, data) {
+        console.log('Handling data from', peerId, ':', data);
+        
+        switch (data.type) {
+          case 'player_info': 
+            this.addPlayer(data.playerId || peerId, data.name, data.isHost); 
+            break;
+          case 'position': 
+            this.updatePlayerPosition(peerId, data.x, data.z, data.rotation); 
+            break;
+          case 'chat': 
+            this.addChatMessage(data.name, data.message); 
+            break;
+          case 'page_collected': 
+            this.game.onRemotePageCollected(peerId, data.pageIndex); 
+            break;
+        }
+      }
+
+      addPlayer(id, name, isHost) {
+        if (!this.players.has(id)) {
+          console.log('Adding player:', id, name, isHost);
+          this.players.set(id, { id, name, x: 0, z: 0, rotation: 0, isHost: isHost || false });
+          this.updatePlayerList();
+          this.game.addPlayerMarker(id, name);
+        }
+      }
+
+      removePlayer(id) { 
+        console.log('Removing player:', id);
+        this.players.delete(id); 
+        this.updatePlayerList(); 
+        this.game.removePlayerMarker(id); 
+      }
+
+      updatePlayerPosition(id, x, z, rotation) {
+        const player = this.players.get(id);
+        if (player) { 
+          player.x = x; 
+          player.z = z; 
+          player.rotation = rotation; 
+          this.game.updatePlayerMarker(id, x, z, rotation); 
+        }
+      }
+
+      updatePlayerList() {
+        if (this.players.size === 0) { 
+          this.playerListEl.innerHTML = '<div class="player-item" style="justify-content:center;color:#ffae4444;">No players yet</div>'; 
+          return; 
+        }
+        let html = '';
+        this.players.forEach((player, id) => {
+          var classes = ['player-item'];
+          if (player.isHost) classes.push('host');
+          if (id === this.playerId) classes.push('you');
+          html += '<div class="' + classes.join(' ') + '">' +
+                  '<span>' + player.name + (player.isHost ? ' (HOST)' : '') + (id === this.playerId ? ' (YOU)' : '') + '</span>' +
+                  '</div>';
+        });
+        this.playerListEl.innerHTML = html;
+      }
+
+      updateStatus(state, text) { 
+        this.statusDot.className = 'status-dot ' + state; 
+        this.statusText.textContent = text; 
+      }
+      
+      showStatusMessage(msg) { 
+        this.statusMsgEl.textContent = msg; 
+      }
+      
+      sendPosition(x, z, rotation) { 
+        this.broadcast({ type: 'position', x: x, z: z, rotation: rotation }); 
+      }
+      
+      broadcast(data) { 
+        this.connections.forEach(function(conn) { 
+          if (conn.open) {
+            try {
+              conn.send(data); 
+            } catch (e) {
+              console.error('Failed to send data:', e);
+            }
+          }
+        }); 
+      }
+      
+      sendChat(message) { 
+        var data = { type: 'chat', name: this.playerName, message: message }; 
+        this.broadcast(data); 
+        this.addChatMessage(this.playerName, message); 
+      }
+      
+      addChatMessage(name, message) {
+        var chatMessages = document.getElementById('chat-messages');
+        var msgEl = document.createElement('div');
+        msgEl.className = 'chat-msg';
+        msgEl.innerHTML = '<span class="name">' + this.escapeHtml(name) + ':</span> ' + this.escapeHtml(message);
+        chatMessages.appendChild(msgEl);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+      
+      escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+      
+      disconnect() {
+        if (this.peer) {
+          this.connections.forEach(conn => conn.close());
+          this.peer.destroy();
+          this.peer = null;
+        }
+        this.connections.clear();
+        this.players.clear();
+        this.updateStatus('disconnected', 'Disconnected');
+      }
+    }
+
+    // ==================== GAME ENGINE ====================
+    class Game {
+      constructor() {
+        this.canvas = document.getElementById('game-canvas');
+        this.container = document.getElementById('game-container');
+        this.hud = document.getElementById('hud');
+        this.lobbyScreen = document.getElementById('lobby-screen');
+        
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        
+        this.scene.background = new THREE.Color(0x141106);
+        this.scene.fog = new THREE.FogExp2(0x141106, 0.03);
+        var ambientLight = new THREE.AmbientLight(0x3a3420, 0.5);
+        this.scene.add(ambientLight);
+        
+        this.playerPos = new THREE.Vector3(0, PLAYER_HEIGHT, 0);
+        this.playerYaw = 0; this.playerPitch = 0;
+        this.keys = new Set();
+        this.isSprinting = false; this.stamina = 1; this.pagesCollected = 0;
+        
+        this.multiplayer = new MultiplayerManager(this);
+        this.playerMarkers = new Map();
+        this.walls = []; this.pages = []; this.mazeSize = 20;
+        this.isPlaying = false; this.startTime = 0;
+        this.chatInput = document.getElementById('chat-input');
+        this.chatActive = false;
+        
+        this.setupInputs(); this.generateLevel(); this.setupUI(); this.animate();
+      }
+
+      setupUI() {
+        var self = this;
+        var nameInput = document.getElementById('player-name');
+        nameInput.value = localStorage.getItem('backrooms_name') || '';
+        var roomInput = document.getElementById('room-code');
+        document.getElementById('join-btn').addEventListener('click', function() {
+          var name = nameInput.value.trim() || 'Player';
+          var roomCode = roomInput.value.trim().toUpperCase();
+          localStorage.setItem('backrooms_name', name);
+          self.multiplayer.connect(name, roomCode);
+          setTimeout(function() { self.startGame(); }, 1000);
+        });
+        this.chatInput.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' && self.chatInput.value.trim()) { self.multiplayer.sendChat(self.chatInput.value.trim()); self.chatInput.value = ''; self.toggleChat(false); }
+          else if (e.key === 'Escape') { self.toggleChat(false); }
+        });
+        window.addEventListener('resize', function() {
+          self.camera.aspect = window.innerWidth / window.innerHeight;
+          self.camera.updateProjectionMatrix();
+          self.renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+      }
+
+      setupInputs() {
+        var self = this;
+        document.addEventListener('keydown', function(e) {
+          self.keys.add(e.code);
+          if (e.code === 'KeyT' && self.isPlaying) self.toggleChat(true);
+          if (e.code === 'Escape' && self.chatActive) self.toggleChat(false);
+        });
+        document.addEventListener('keyup', function(e) { self.keys.delete(e.code); });
+        document.addEventListener('mousemove', function(e) {
+          if (self.isPlaying && !self.chatActive && document.pointerLockElement === self.canvas) {
+            self.playerYaw -= e.movementX * 0.002;
+            self.playerPitch -= e.movementY * 0.002;
+            self.playerPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, self.playerPitch));
+          }
+        });
+        this.canvas.addEventListener('click', function() { if (self.isPlaying && !self.chatActive) { self.canvas.requestPointerLock(); } });
+      }
+
+      toggleChat(active) {
+        this.chatActive = active;
+        this.chatInput.disabled = !active;
+        if (active) { this.chatInput.focus(); document.exitPointerLock(); } else { this.canvas.requestPointerLock(); }
+        document.getElementById('chat-container').classList.toggle('hidden', !active);
+      }
+
+      generateLevel() {
+        var wallMat = new THREE.MeshStandardMaterial({ color: 0xcb9f5e });
+        var floorGeo = new THREE.PlaneGeometry(this.mazeSize * CELL_SIZE, this.mazeSize * CELL_SIZE);
+        var floorMat = new THREE.MeshStandardMaterial({ color: 0x4a3f24 });
+        var floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        this.scene.add(floor);
+        var ceiling = new THREE.Mesh(floorGeo, floorMat);
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.y = WALL_HEIGHT;
+        this.scene.add(ceiling);
+        for (var x = 0; x < this.mazeSize; x++) {
+          for (var z = 0; z < this.mazeSize; z++) {
+            if (x === 0 || x === this.mazeSize - 1 || z === 0 || z === this.mazeSize - 1) { this.createWall(x, z, wallMat); continue; }
+            if (Math.random() < 0.3) { this.createWall(x, z, wallMat); }
+          }
+        }
+        var pageGeo = new THREE.PlaneGeometry(0.3, 0.4);
+        var pageMat = new THREE.MeshStandardMaterial({ color: 0xfff4cc, emissive: 0xfff4cc, emissiveIntensity: 0.3 });
+        for (var i = 0; i < TOTAL_PAGES; i++) {
+          var px = Math.floor(Math.random() * (this.mazeSize - 2)) + 1;
+          var pz = Math.floor(Math.random() * (this.mazeSize - 2)) + 1;
+          var page = new THREE.Mesh(pageGeo, pageMat);
+          page.position.set((px - this.mazeSize/2) * CELL_SIZE + CELL_SIZE/2, 1.5, (pz - this.mazeSize/2) * CELL_SIZE + CELL_SIZE/2);
+          page.rotation.y = Math.random() * Math.PI;
+          page.userData = { index: i, collected: false };
+          this.scene.add(page);
+          this.pages.push(page);
+        }
+        for (var li = 0; li < 10; li++) {
+          var light = new THREE.PointLight(0xffeebb, 0.5, 15);
+          light.position.set((Math.random() * this.mazeSize - this.mazeSize/2) * CELL_SIZE, 2.5, (Math.random() * this.mazeSize - this.mazeSize/2) * CELL_SIZE);
+          this.scene.add(light);
+        }
+      }
+
+      createWall(x, z, material) {
+        var wallGeo = new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT, 0.2);
+        var wall = new THREE.Mesh(wallGeo, material);
+        wall.position.set((x - this.mazeSize/2) * CELL_SIZE + CELL_SIZE/2, WALL_HEIGHT / 2, (z - this.mazeSize/2) * CELL_SIZE + CELL_SIZE/2);
+        this.scene.add(wall);
+        this.walls.push(wall);
+      }
+
+      startGame() {
+        this.lobbyScreen.classList.add('hidden');
+        this.hud.classList.remove('hidden');
+        this.isPlaying = true;
+        this.startTime = Date.now();
+        this.playerPos.set(0, PLAYER_HEIGHT, 0);
+        this.playerYaw = 0; this.playerPitch = 0;
+        this.canvas.requestPointerLock();
+        this.showToast('GAME STARTED - Find all 8 pages!');
+      }
+
+      update(deltaTime) {
+        if (!this.isPlaying) return;
+        var speed = this.isSprinting && this.stamina > 0 ? SPRINT_SPEED : MOVE_SPEED;
+        var moveDir = new THREE.Vector3();
+        if (this.keys.has('KeyW')) moveDir.z -= 1;
+        if (this.keys.has('KeyS')) moveDir.z += 1;
+        if (this.keys.has('KeyA')) moveDir.x -= 1;
+        if (this.keys.has('KeyD')) moveDir.x += 1;
+        if (moveDir.length() > 0) {
+          moveDir.normalize();
+          moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.playerYaw);
+          var newPos = this.playerPos.clone();
+          newPos.x += moveDir.x * speed * deltaTime;
+          newPos.z += moveDir.z * speed * deltaTime;
+          if (!this.checkCollision(newPos)) {
+            this.playerPos.copy(newPos);
+            if (this.isSprinting && this.keys.has('ShiftLeft')) { this.stamina = Math.max(0, this.stamina - deltaTime * 0.5); }
+          }
+        }
+        if (!this.isSprinting || !this.keys.has('ShiftLeft')) { this.stamina = Math.min(1, this.stamina + deltaTime * 0.3); }
+        this.isSprinting = this.keys.has('ShiftLeft') && this.stamina > 0;
+        this.camera.position.copy(this.playerPos);
+        this.camera.rotation.order = 'YXZ';
+        this.camera.rotation.y = this.playerYaw;
+        this.camera.rotation.x = this.playerPitch;
+        this.checkPageCollection();
+        this.updateHUD();
+        if (this.multiplayer.peer && this.multiplayer.peer.id) { this.multiplayer.sendPosition(this.playerPos.x, this.playerPos.z, this.playerYaw); }
+      }
+
+      checkCollision(pos) {
+        var playerRadius = 0.3;
+        for (var i = 0; i < this.walls.length; i++) {
+          var wall = this.walls[i];
+          var dx = Math.abs(pos.x - wall.position.x);
+          var dz = Math.abs(pos.z - wall.position.z);
+          if (dx < CELL_SIZE/2 + playerRadius && dz < 0.1 + playerRadius) return true;
+          if (dx < 0.1 + playerRadius && dz < CELL_SIZE/2 + playerRadius) return true;
+        }
+        return false;
+      }
+
+      checkPageCollection() {
+        for (var i = 0; i < this.pages.length; i++) {
+          var page = this.pages[i];
+          if (page.userData.collected) continue;
+          var dist = this.playerPos.distanceTo(page.position);
+          if (dist < 1.5) {
+            page.userData.collected = true;
+            page.visible = false;
+            this.pagesCollected++;
+            this.showToast('PAGE ' + this.pagesCollected + '/' + TOTAL_PAGES + ' COLLECTED');
+            this.multiplayer.broadcast({ type: 'page_collected', pageIndex: page.userData.index, playerId: this.multiplayer.playerId });
+            if (this.pagesCollected >= TOTAL_PAGES) this.winGame();
+          }
+        }
+      }
+
+      updateHUD() {
+        document.getElementById('pages-display').textContent = 'PAGES ' + this.pagesCollected + '/' + TOTAL_PAGES;
+        document.getElementById('objective').textContent = 'COLLECT THE PAGES — ' + this.pagesCollected + '/' + TOTAL_PAGES;
+        var staminaFill = document.getElementById('stamina-fill');
+        staminaFill.style.width = (this.stamina * 100) + '%';
+        staminaFill.className = 'stamina-fill' + (this.stamina < 0.25 ? ' low' : '');
+      }
+
+      showToast(message) {
+        var container = document.getElementById('toast-container');
+        var toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function() { toast.remove(); }, 3000);
+      }
+
+      addPlayerMarker(playerId, name) {
+        var marker = document.createElement('div');
+        marker.className = 'player-marker';
+        marker.setAttribute('data-name', name);
+        marker.id = 'marker-' + playerId;
+        document.getElementById('player-markers').appendChild(marker);
+        this.playerMarkers.set(playerId, marker);
+      }
+
+      updatePlayerMarker(playerId, x, z, rotation) {
+        var marker = this.playerMarkers.get(playerId);
+        if (!marker) return;
+        var vector = new THREE.Vector3(x, PLAYER_HEIGHT, z);
+        vector.project(this.camera);
+        var halfWidth = window.innerWidth / 2;
+        var halfHeight = window.innerHeight / 2;
+        marker.style.left = ((vector.x * halfWidth) + halfWidth) + 'px';
+        marker.style.top = (-(vector.y * halfHeight) + halfHeight) + 'px';
+        marker.style.display = 'block';
+      }
+
+      removePlayerMarker(playerId) {
+        var marker = this.playerMarkers.get(playerId);
+        if (marker) { marker.remove(); this.playerMarkers.delete(playerId); }
+      }
+
+      onRemotePageCollected(playerId, pageIndex) {
+        var player = this.multiplayer.players.get(playerId);
+        if (player) { this.showToast(player.name + ' collected a page!'); }
+      }
+
+      winGame() {
+        this.isPlaying = false;
+        document.exitPointerLock();
+        var elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+        var minutes = Math.floor(elapsed / 60);
+        var seconds = elapsed % 60;
+        document.getElementById('win-stats').textContent = 'ALL 8 PAGES · ESCAPED IN ' + minutes + ':' + seconds.toString().padStart(2, '0');
+        document.getElementById('win-screen').classList.remove('hidden');
+      }
+
+      animate() {
+        var self = this;
+        requestAnimationFrame(function() { self.animate(); });
+        var deltaTime = 0.016;
+        this.update(deltaTime);
+        this.renderer.render(this.scene, this.camera);
+      }
+    }
+
+    // Start game when page loads
+    window.addEventListener('DOMContentLoaded', function() { window.game = new Game(); });
+  </script>
 </body>
 </html>
